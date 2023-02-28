@@ -9,6 +9,9 @@ from image_synthesis.epithelial_sheet.v1_0 import generate_image
 def main(config_path: str, output_path: str, dataset_name: str):
     assert output_path.endswith('.h5'), "Output file must be an h5 file"
 
+    if dataset_name is None:
+        dataset_name = f'epithelial_{config_path}'
+
     if os.path.isfile(output_path):
         f = h5py.File(output_path, 'a')
         action = 'appended to'
@@ -35,7 +38,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('config', type=str, help='The config file that stores the parameters for the image generation')
     ap.add_argument('output', type=str, help='The file where the output image should be stored (must be an h5 file)')
-    ap.add_argument('name', type=str, help='The name of the dataset that stores the output image')
+    ap.add_argument('-n', '--name', type=str, default=None, help='The name of the dataset that stores the output image')
 
     args = ap.parse_args()
     main(args.config, args.output, args.name)
