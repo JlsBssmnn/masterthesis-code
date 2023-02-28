@@ -10,6 +10,7 @@ from .. import point_generation as pg
 from ..logging_config import logging
 
 def generate_image(config):
+    logging.info('Start image generation')
     noise_resolution = (np.array(config.limits) / config.noise_resolution_factor).astype(int)
     assert ((config.limits % noise_resolution).astype(int) == 0).all()
 
