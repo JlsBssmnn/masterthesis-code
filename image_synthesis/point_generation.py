@@ -4,7 +4,7 @@ This file provides functions for generating points for the centers of cells.
 from .utils import random_float_array, rx, rotate_points_3d
 import numpy as np
 
-def generate_cell_centers(limits, min_dist, max_dist=None, cell_count=None, max_retries=50):
+def generate_cell_centers_random_points(limits, min_dist, max_dist=None, cell_count=None, max_retries=50):
   """
   Generates an array of points that represent the center of cells. This can be used to
   actually generate synthetic cell images.
@@ -50,7 +50,7 @@ def generate_cell_centers(limits, min_dist, max_dist, min_child_count, max_child
   Generates an array of points that represent the center of cells. This can be used to
   actually generate synthetic cell images. This algorithm first generates a center in
   the middle and from there rotates around the center to generate further points. This
-  procedure is then recusively repeated for the newly generated points.
+  procedure is then recursively repeated for the newly generated points.
 
   Parameters:
   -------
@@ -62,7 +62,7 @@ def generate_cell_centers(limits, min_dist, max_dist, min_child_count, max_child
   min_child_count: The minimum number of points that are being generated around a point
   max_child_count: The maximum number of points that are being generated around a point
   angle_noise: The maximum number which is added/subtracted from the angles around a
-  point to make the neighbooring points not too regular in their positioning (value in
+  point to make the neighboring points not too regular in their positioning (value in
   radians)
   max_center_offset: The initial starting point is the center of the image, moved by a
   random amount. This variable specifies for each dimension the maximum amount the center
@@ -81,7 +81,6 @@ def generate_cell_centers(limits, min_dist, max_dist, min_child_count, max_child
   points = np.concatenate((
     center.reshape(1, -1), np.array([[float('inf')]])
   ), axis=1)
-  # points = limits.mean(axis=1).reshape(1, -1)
     
   def generate_children(i, depth):
     nonlocal points
@@ -128,6 +127,9 @@ def generate_cell_centers(limits, min_dist, max_dist, min_child_count, max_child
 
 def generate_cell_centers_non_recursive(limits, min_dist, max_dist, min_child_count, max_child_count, angle_noise,
                          max_center_offset=None):
+  """
+  Same as the `generate_cell_centers` function, but it doesn't use recursion 
+  """
   if max_dist is None:
     max_dist = 0
 
@@ -189,7 +191,7 @@ def generate_3d_centers(limits, min_dist, max_dist, min_child_count, max_child_c
                        max_center_offset=None):
     """
     This function generates 3d cell centers by creating 2d planes along one axis, then generating
-    points on those planes. The points are then offset by a random amout from the plane.
+    points on those planes. The points are then offset by a random amount from the plane.
     """
     assert limits.shape[0] == 3, "This function only works for 3d limits"
     if plane_distance is None or max_offset_from_plane is None:
