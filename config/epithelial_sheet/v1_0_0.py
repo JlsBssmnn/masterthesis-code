@@ -2,7 +2,7 @@ class Config:
   angle_noise = 0.01
   first_plane_offset = 20
   gaussian_sigma = 2
-  limits = [2600, 2500, 100]
+  limits = [2000, 2000, 100]
   max_center_offset = [10, 10]
   max_child_count = 5
   max_dist = 60
