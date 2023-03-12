@@ -6,6 +6,17 @@ from typing import Callable
 def rx(theta):
     return np.array([[1, 0, 0], [0, np.cos(theta), -np.sin(theta)], [0, np.sin(theta), np.cos(theta)]])
 
+def ry(theta):
+    return np.array([[np.cos(theta), 0, np.sin(theta)], [0, 1, 0], [-np.sin(theta), 0, np.cos(theta)]])
+
+def rz(theta):
+    return np.array([[np.cos(theta), -np.sin(theta), 0], [np.sin(theta), np.cos(theta), 0], [0, 0, 1]])
+
+rotation_matricies = np.array([rz, ry, rx])
+
+def norm(vector):
+  return vector / np.linalg.norm(vector)
+
 def in_polygon(point, edge_vertices: list) -> bool:
   n = len(edge_vertices)
   sign = None
@@ -32,6 +43,9 @@ def random_float(lower: float = 0, upper: float = 1) -> float:
 def random_float_array(shape, lower: float = 0, upper: float = 1):
     return np.random.rand(*shape) * (upper - lower) + lower
 
+def random_int_array(shape, lower: int = 0, upper: int = 1):
+    return np.round(np.random.rand(*shape) * (upper - lower) + lower).astype(int)
+
 def vector_angle(v1, v2) -> float:
   cross = np.cross(v1, v2)
   dot = np.dot(v1, v2)
@@ -44,8 +58,18 @@ def rotate_point(origin, angle: float, points: npt.NDArray[np.float64]):
     np.sin(angle) * (points[:, 0] - origin[0]) + np.cos(angle) * (points[:, 1] - origin[1]) + origin[1]
   ]).T
 
+def rotate_point_3d(rotation_matrix, point, origin=np.array([0, 0, 0])):
+  tmp = point - origin
+  tmp = np.dot(rotation_matrix, tmp)
+  return tmp + origin
+
 def rotate_points_3d(rotation_matrix, points):
      return np.array([np.dot(rotation_matrix, p) for p in points])
+
+
+def point_plane_dist_along_vec(point, vector, plane_normal, plane_d):
+  factor = (plane_d - np.dot(point, plane_normal)) / np.dot(vector, plane_normal)
+  return np.linalg.norm(vector * factor)
 
 
 def bezier_quadratic(p0, p1, p2) -> Callable[[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
