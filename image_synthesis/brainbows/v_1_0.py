@@ -20,7 +20,7 @@ class BrainbowGenerator:
         logging.info('Generated Perlin Noise')
 
     def create_images(self):
-        image = np.zeros(self.config.image_size, dtype=np.uint16)
+        self.image = np.zeros(self.config.image_size, dtype=np.uint16)
         retries = self.config.retries
         self.neuron_count = 0
         logging.info('beginning the neuron generation loop')
@@ -32,25 +32,54 @@ class BrainbowGenerator:
 
             mask = neuron_image == 0
             
-            if self.valid_new_neuron(image, mask):
-                self.neuron_count += 1
-                image[mask] = self.neuron_count
-            else:
+            if mask.sum() < self.config.min_voxel_per_neuron:
+                retries -= 1
+                continue
+            elif not self.insert_new_neuron(mask):
                 retries -= 1
 
         logging.info('finished generation of synthetic brainbows with a total of %d neurons', self.neuron_count)
-        return image
+        return self.image
 
-    def valid_new_neuron(self, image, neuron) -> bool:
+    def insert_new_neuron(self, neuron) -> bool:
         """
-        Tests whether the given neuron can be inserted into the image without
-        breaking an existing neuron into separate pieces.
+        Tests whether the given neuron can be inserted into the image. This is the case if no neuron
+        is split by the new neuron such that there is only a part of that neuron that lies inside the
+        image (not touching the boundaries). If the neuron can be inserted, this method does so and 
+        returns true, otherwise false is returned. For all other neurons that are split into multiple
+        parts, this method randomly choses one part that is kept, all other parts are deleted from the
+        image.
         """
-        new_image = image.copy()
+        new_image = self.image.copy()
         new_image[neuron] = self.neuron_count + 1
 
-        _, con_components = cc3d.connected_components(new_image, return_N=True, connectivity=6)
-        return con_components == self.neuron_count + 1
+        cc, con_components = cc3d.connected_components(new_image, return_N=True, connectivity=6)
+        if con_components <= self.neuron_count:
+            return False
+
+        for i in range(1, self.neuron_count + 1):
+            mask = new_image == i
+            component_labels = np.unique(cc[mask])
+            if len(component_labels) == 1:
+                continue
+
+            chosen_label = None
+            for label in component_labels:
+                locations = np.transpose(np.nonzero(cc == label))
+                if (locations.min(0) == 0).any() or (locations.max(0) == self.config.image_size).any():
+                    chosen_label = label
+                    break
+
+            if chosen_label is None:
+                return False
+
+            components_to_remove = [x for x in component_labels if x != chosen_label]
+            for label in components_to_remove:
+                new_image[cc == label] = 0
+
+        self.image = new_image
+        self.neuron_count += 1
+        return True
 
     def render_lines(self, lines, line_indices):
         image = np.ones(self.config.image_size).astype(np.uint8)
