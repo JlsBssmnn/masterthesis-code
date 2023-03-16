@@ -9,6 +9,7 @@ from image_synthesis.logging_config import logging
 class BrainbowGenerator:
     def __init__(self, config):
         logging.info('Creating BrainbowGenerator')
+        assert config.max_branches > 1
         self.config = config
         self.neuron_count = 0
         np.random.seed(config.seed)
@@ -116,6 +117,10 @@ class BrainbowGenerator:
         lines = [start_point]
         line_indices = []
         queue: list[tuple[int, npt.NDArray]] = [(0, start_direction)]
+        total_branch_count = 1
+        allowed_to_branch = np.random.rand() < self.config.branching_neuron_prob
+        branch_count = np.random.choice(range(2, self.config.max_branches + 1))
+
         while queue:
             p_index, direction = queue[0]
             p = lines[p_index]
@@ -145,7 +150,9 @@ class BrainbowGenerator:
                 queue.pop(0)
                 continue
 
-            if np.random.rand() < self.config.branch_prob:
+            if allowed_to_branch and total_branch_count < branch_count and \
+                    np.random.rand() < self.config.branch_prob / total_branch_count:
+                total_branch_count += 1
                 new_direction = direction.copy()
                 for axis in range(3):
                     new_direction = utils.rotate_point_3d(utils.rotation_matricies[axis]\
