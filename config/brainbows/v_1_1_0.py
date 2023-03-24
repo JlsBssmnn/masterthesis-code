@@ -3,6 +3,8 @@ import numpy as np
 class Config:
   branch_prob = 0.05
   branching_neuron_prob = 0.15
+  cmap = './data/brainbow_colors.h5'
+  cmap_dataset = 'colors'
   image_size = (136, 512, 512)
   large_rotation_prob = 0.1
   max_branches = 3
@@ -13,7 +15,7 @@ class Config:
   min_len = 2
   min_thicknesses = [1, 2, 3]
   min_voxel_per_neuron = 1000
-  neuron_count = 190
+  neuron_count = 189
   noise_resolution_factor = 32
   refinement_noise_intensity = 2
   refinement_noise_resolution_factor = 8
