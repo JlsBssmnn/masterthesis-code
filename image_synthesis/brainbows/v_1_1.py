@@ -6,6 +6,21 @@ import image_synthesis.utils as utils
 import cc3d
 from image_synthesis.logging_config import logging
 
+class DirectionRotater:
+    def __init__(self, config):
+        self.config = config
+
+    def rotate_direction(self, direction):
+        if np.random.rand() < self.config.large_rotation_prob:
+            rotation = self.config.max_rotation_large
+        else:
+            rotation = self.config.max_rotation_small
+
+        for axis in range(3):
+            angle = utils.random_float(-rotation, rotation)
+            direction = utils.rotate_point_3d(utils.rotation_matrices[axis](angle), direction)
+        return direction
+
 class BrainbowGenerator:
     def __init__(self, config):
         logging.info('Creating BrainbowGenerator')
@@ -15,9 +30,25 @@ class BrainbowGenerator:
         np.random.seed(config.seed)
 
         noise_resolution = (np.array(self.config.image_size) / self.config.noise_resolution_factor).astype(int)
-        noise_intensity = ((self.config.max_thickness - self.config.min_thickness) / 2) / self.config.perlin_max
-        self.noise = perlin.generate_perlin_noise_3d(self.config.image_size, noise_resolution) * noise_intensity
+        noise_intensity = ((self.config.max_thickness - max(self.config.min_thicknesses)) / 2)
+        self.noise = perlin.generate_perlin_noise_3d(self.config.image_size, noise_resolution)
+        self.noise /= max(abs(self.noise.max()), abs(self.noise.min()))
+        self.noise *= noise_intensity
+
+        anti_noise = perlin.generate_perlin_noise_3d(self.config.image_size, noise_resolution)
+        anti_noise /= max(abs(anti_noise.max()), abs(anti_noise.min()))
+        anti_noise *= noise_intensity
+
+        refinement_noise_resolution = (np.array(self.config.image_size) / self.config.refinement_noise_resolution_factor).astype(int)
+        self.refinement_noise = perlin.generate_perlin_noise_3d(self.config.image_size, refinement_noise_resolution)
+        self.refinement_noise /= max(abs(self.refinement_noise.max()), abs(self.refinement_noise.min()))
+        self.refinement_noise[self.refinement_noise < 0] = 0
+
+        anti_noise[anti_noise > 0] = 0
+        self.noise -= anti_noise
         self.noise[self.noise > 0] = 0
+
+        self.direction_rotater = DirectionRotater(config)
         logging.info('Generated Perlin Noise')
 
     def create_images(self):
@@ -35,7 +66,6 @@ class BrainbowGenerator:
             
             if mask.sum() < self.config.min_voxel_per_neuron:
                 retries -= 1
-                continue
             elif not self.insert_new_neuron(mask):
                 retries -= 1
 
@@ -109,7 +139,7 @@ class BrainbowGenerator:
         p[side_to_project] += (1 if project_value == 0 else -1)
         for axis in set([0, 1, 2]) - set([side_to_project]):
             p = utils.rotate_point_3d(utils.rotation_matrices[axis]\
-                    (utils.random_float(-self.config.max_rotation, self.config.max_rotation)), p, start_point)
+                    (utils.random_float(-self.config.max_rotation_large, self.config.max_rotation_large)), p, start_point)
         start_direction = utils.norm(p - start_point)
         return start_point, start_direction
 
@@ -154,13 +184,9 @@ class BrainbowGenerator:
                     np.random.rand() < self.config.branch_prob / total_branch_count:
                 total_branch_count += 1
                 new_direction = direction.copy()
-                for axis in range(3):
-                    new_direction = utils.rotate_point_3d(utils.rotation_matrices[axis]\
-                            (utils.random_float(-self.config.max_rotation, self.config.max_rotation)), new_direction)
+                new_direction = self.direction_rotater.rotate_direction(new_direction)
                 queue.append((p_index, new_direction))
-            for axis in range(3):
-                direction = utils.rotate_point_3d(utils.rotation_matrices[axis]\
-                        (utils.random_float(-self.config.max_rotation, self.config.max_rotation)), direction)
+            direction = self.direction_rotater.rotate_direction(direction)
             queue[0] = (new_point_index, direction)
 
         lines = np.array(lines)
@@ -169,7 +195,10 @@ class BrainbowGenerator:
 
     def create_neuron_image(self, lines, line_indicies):
         image = self.render_lines(lines, line_indicies)
+        min_thickness = np.random.choice(self.config.min_thicknesses, p = self.config.thickness_probabilities)
+
         dist_transform = ndi.distance_transform_edt(image)
-        dist_transform += self.noise
-        image[dist_transform < self.config.min_thickness] = 0
+        image[dist_transform <= 1] = 0
+        dist_transform += self.noise - self.refinement_noise * self.config.refinement_noise_intensity
+        image[dist_transform < min_thickness] = 0
         return image
