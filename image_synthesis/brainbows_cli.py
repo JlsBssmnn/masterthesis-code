@@ -8,42 +8,62 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent.resolve()))
 from image_synthesis.brainbows.colorize_brainbows import colorize_brainbows_cmap
 from image_synthesis.brainbows.v_1_1 import BrainbowGenerator
 from image_synthesis.logging_config import logging
+from image_synthesis.utils import scale_image
 
-def main(config_path: str, output_path: str, dataset_name: str):
-    assert output_path.endswith('.h5'), "Output file must be an h5 file"
-
-    label_dset_name = 'label'
-    color_dset_name = 'color'
-    if dataset_name is not None:
-        label_dset_name = dataset_name + '_' + label_dset_name
-        color_dset_name = dataset_name + '_' + color_dset_name
-
-    if os.path.isfile(output_path):
-        f = h5py.File(output_path, 'a')
+def open_h5(path, *datasets_to_create):
+    if os.path.isfile(path):
+        f = h5py.File(path, 'a')
         action = 'appended to'
-        if label_dset_name in f or color_dset_name in f:
-            logging.error(f'The given dataset name already exists in {output_path}')
+        if len(set(datasets_to_create).intersection(set(f.keys()))) != 0:
+            logging.error(f'Some dataset you want to create already exists in {opt.output}')
             f.close()
             exit(1)
     else:
         action = 'created'
-        f = h5py.File(output_path, 'w-')
-    
-    config = importlib.import_module('config.brainbows.' + config_path).config
+        f = h5py.File(opt.output, 'w-')
+    return f, action
+
+def main(opt):
+    assert opt.output.endswith('.h5'), "Output file must be an h5 file"
+
+    label_dset_name = 'label'
+    label_scaled_dset_name = 'label_scaled'
+    color_dset_name = 'color'
+    if opt.name is not None:
+        label_dset_name = opt.name + '_' + label_dset_name
+        label_scaled_dset_name = opt.name + '_' + label_scaled_dset_name
+        color_dset_name = opt.name + '_' + color_dset_name
+
+    config = importlib.import_module('config.brainbows.' + opt.config).config
+    if config.post_scaling:
+        f, action = open_h5(opt.output, label_dset_name, label_scaled_dset_name, color_dset_name)
+    else:
+        f, action = open_h5(opt.output, label_dset_name, color_dset_name)
+
     generator = BrainbowGenerator(config)
     image = generator.create_images()
 
     dataset = f.create_dataset(label_dset_name, data=image)
     attr = dataset.attrs
-    attr['config'] = config_path
+    attr['config'] = opt.config
 
-    colorized = colorize_brainbows_cmap(output_path, label_dset_name, config.cmap, config.cmap_dataset)
+    colorized = colorize_brainbows_cmap(opt.output, label_dset_name, config.cmap, config.cmap_dataset)
+    if config.post_scaling:
+        image_scaled = scale_image(image, config.post_scaling)
+        dataset = f.create_dataset(label_scaled_dset_name, data=image_scaled)
+        attr = dataset.attrs
+        attr['config'] = opt.config
+        attr['element_size_um'] = [0.2, 0.1, 0.1]
+
+        colorized = scale_image(colorized, config.post_scaling)
+        logging.info('Scaled image by %s', config.post_scaling)
+
     dataset = f.create_dataset(color_dset_name, data=colorized)
     attr = dataset.attrs
-    attr['config'] = config_path
+    attr['config'] = opt.config
     attr['element_size_um'] = [0.2, 0.1, 0.1]
 
-    logging.info(f'Successfully {action} file ${output_path}')
+    logging.info(f'Successfully {action} file ${opt.output}')
     f.close()
 
 if __name__ == '__main__':
@@ -52,5 +72,5 @@ if __name__ == '__main__':
     ap.add_argument('output', type=str, help='The file where the output image should be stored (must be an h5 file)')
     ap.add_argument('-n', '--name', type=str, default=None, help='The base name of the datasets that store the output images')
 
-    args = ap.parse_args()
-    main(args.config, args.output, args.name)
+    opt = ap.parse_args()
+    main(opt)

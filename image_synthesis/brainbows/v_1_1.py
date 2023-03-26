@@ -30,14 +30,11 @@ class BrainbowGenerator:
         np.random.seed(config.seed)
 
         noise_resolution = (np.array(self.config.image_size) / self.config.noise_resolution_factor).astype(int)
-        noise_intensity = ((self.config.max_thickness - max(self.config.min_thicknesses)) / 2)
         self.noise = perlin.generate_perlin_noise_3d(self.config.image_size, noise_resolution)
         self.noise /= max(abs(self.noise.max()), abs(self.noise.min()))
-        self.noise *= noise_intensity
 
         anti_noise = perlin.generate_perlin_noise_3d(self.config.image_size, noise_resolution)
         anti_noise /= max(abs(anti_noise.max()), abs(anti_noise.min()))
-        anti_noise *= noise_intensity
 
         refinement_noise_resolution = (np.array(self.config.image_size) / self.config.refinement_noise_resolution_factor).astype(int)
         self.refinement_noise = perlin.generate_perlin_noise_3d(self.config.image_size, refinement_noise_resolution)
@@ -195,10 +192,22 @@ class BrainbowGenerator:
 
     def create_neuron_image(self, lines, line_indicies):
         image = self.render_lines(lines, line_indicies)
-        min_thickness = np.random.choice(self.config.min_thicknesses, p = self.config.thickness_probabilities)
+        if type(self.config.min_thickness) == list:
+            min_thickness = np.random.choice(self.config.min_thickness, p = self.config.min_thickness_probabilities)
+            largest_min_thickness = max(self.config.min_thickness)
+        else:
+            min_thickness = self.config.min_thickness
+            largest_min_thickness = self.config.min_thickness
 
         dist_transform = ndi.distance_transform_edt(image)
         image[dist_transform <= 1] = 0
-        dist_transform += self.noise - self.refinement_noise * self.config.refinement_noise_intensity
+
+        if type(self.config.max_thickness) == list:
+            noise_intensity = ((np.random.choice(self.config.max_thickness, p=self.config.max_thickness_probabilities) \
+                    - largest_min_thickness) / 2)
+        else:
+            noise_intensity = ((self.config.max_thickness - largest_min_thickness) / 2)
+        noise = self.noise * noise_intensity
+        dist_transform += noise - self.refinement_noise * self.config.refinement_noise_intensity
         image[dist_transform < min_thickness] = 0
         return image
