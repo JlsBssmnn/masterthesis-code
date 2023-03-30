@@ -70,8 +70,37 @@ def rotate_points_3d(rotation_matrix, points):
 
 
 def point_plane_dist_along_vec(point, vector, plane_normal, plane_d):
+  """
+  Returns the distance from the given point along the given vector to the
+  given plane.
+  """
   factor = (plane_d - np.dot(point, plane_normal)) / np.dot(vector, plane_normal)
   return np.linalg.norm(vector * factor)
+
+
+def point_box_dist_along_vec(point, vector, origin, side_lengths):
+  """
+  Returns the distance from the given point along the given vector to the
+  border of the given box. The box is defined by it's origin point (3D) and
+  a 3-element iterable that contains the lengths of the sides for each
+  dimension. The length is the number of voxels along that dimension, meaning
+  adding the length to the origin would be one voxel beyond of the image array.
+  """
+  distances = []
+  for axis in range(3):
+    if vector[axis] == 0:
+      continue
+    normal = np.array([0, 0, 0])
+    normal[axis] = 1
+
+    if vector[axis] > 0:
+      plane_d = origin[axis] + side_lengths[axis] - 1
+    else:
+      plane_d = origin[axis]
+    distances.append(point_plane_dist_along_vec(point, vector, normal, plane_d))
+  assert len(distances) > 0, \
+          'It was not possible to determine the distance from the point to the box'
+  return min(distances)
 
 
 def bezier_quadratic(p0, p1, p2) -> Callable[[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
