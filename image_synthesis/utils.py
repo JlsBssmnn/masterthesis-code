@@ -103,6 +103,27 @@ def point_box_dist_along_vec(point, vector, origin, side_lengths):
   return min(distances)
 
 
+def slice_by_plane(shape, normal, d):
+    """
+    Returns the indices into an array of the given shape that are going along
+    the given plane.
+    """
+    dim = int(np.argmax(np.abs(normal)))
+    base_dim = set(range(3))
+    base_dim.remove(dim)
+    base_dim = list(base_dim)
+
+    axis1, axis2 = np.meshgrid(np.arange(shape[base_dim[0]]), np.arange(shape[base_dim[1]]))
+    axis3 = np.rint(np.minimum( \
+            (d - normal[base_dim[0]] * axis1 - normal[base_dim[1]] * axis2) / normal[dim], \
+            shape[dim] - 1)) \
+        .astype(int)
+
+    r_value = [axis1, axis2]
+    r_value.insert(dim, axis3)
+
+    return tuple(r_value)
+
 def bezier_quadratic(p0, p1, p2) -> Callable[[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
   p0 = p0.reshape(1, -1)
   p1 = p1.reshape(1, -1)
