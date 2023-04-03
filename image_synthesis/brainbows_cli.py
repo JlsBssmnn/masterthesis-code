@@ -6,7 +6,6 @@ import sys
 import h5py
 sys.path.append(str(pathlib.Path(__file__).parent.parent.resolve()))
 from image_synthesis.brainbows.colorize_brainbows import colorize_brainbows_cmap
-from image_synthesis.brainbows.v_1_1 import BrainbowGenerator
 from image_synthesis.logging_config import logging
 from image_synthesis.utils import scale_image
 
@@ -25,6 +24,8 @@ def open_h5(path, *datasets_to_create):
 
 def main(opt):
     assert opt.output.endswith('.h5'), "Output file must be an h5 file"
+    if not opt.config.startswith(opt.algorithm):
+        logging.warning('Config %s seems to not match generation algorithm %s!', opt.config, opt.algorithm)
 
     label_dset_name = 'label'
     label_scaled_dset_name = 'label_scaled'
@@ -34,6 +35,7 @@ def main(opt):
         label_scaled_dset_name = opt.name + '_' + label_scaled_dset_name
         color_dset_name = opt.name + '_' + color_dset_name
 
+    BrainbowGenerator = importlib.import_module('image_synthesis.brainbows.' + opt.algorithm).BrainbowGenerator
     config = importlib.import_module('config.brainbows.' + opt.config).config
     if config.post_scaling:
         f, action = open_h5(opt.output, label_dset_name, label_scaled_dset_name, color_dset_name)
@@ -68,6 +70,7 @@ def main(opt):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
+    ap.add_argument('algorithm', type=str, help='The image generation algorithm that shall be used (located in ./brainbows).')
     ap.add_argument('config', type=str, help='The config file that stores the parameters for the image generation')
     ap.add_argument('output', type=str, help='The file where the output image should be stored (must be an h5 file)')
     ap.add_argument('-n', '--name', type=str, default=None, help='The base name of the datasets that store the output images')
