@@ -348,8 +348,8 @@ class BrainbowGenerator:
             middle_distances = np.ones(dodge_area.shape, dtype=np.uint8)
             middle_distances[tuple(middle - area_origin)] = 0
             middle_distances = cast(npt.NDArray, ndi.distance_transform_edt(middle_distances, sampling=np.abs(end - start)))
-            middle_distances[dodge_area != 0] = 255
-            middle_distances[tuple(middle - area_origin)] = 255
+            middle_distances[dodge_area != 0] = float('inf')
+            middle_distances[tuple(middle - area_origin)] = float('inf')
 
             dodge_middle = np.array(np.unravel_index(middle_distances.argmin(), middle_distances.shape))
             dodge_middle += area_origin
