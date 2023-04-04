@@ -114,20 +114,22 @@ class BrainbowGenerator:
         # wrap around another neuron
         for start, end in self.dodge_locations:
             search_mask, search_origin = self.shortest_path_search_area(start, end)
-            dodge_area = self.neuron_buffer[search_mask].copy()
+            dodge_area = self.neuron_buffer[search_mask]
 
             plane_normal = end - start
-            plane_p = start + plane_normal / 2 - search_origin
-            plane_d = np.dot(plane_normal, plane_p)
+            line = np.transpose(skimage.draw.line_nd(start, end, endpoint=True))
+            for plane_p in line:
+                plane_p -= search_origin
+                plane_d = np.dot(plane_normal, plane_p)
 
-            plane_mask = utils.slice_by_plane(dodge_area.shape, plane_normal, plane_d)
-            neuron_mask = np.zeros(dodge_area.shape, dtype=bool)
-            neuron_mask[plane_mask] = True
-            neuron_mask[dodge_area != 0] = False
+                plane_mask = utils.slice_by_plane(dodge_area.shape, plane_normal, plane_d)
+                neuron_mask = np.zeros(dodge_area.shape, dtype=bool)
+                neuron_mask[plane_mask] = True
+                neuron_mask[dodge_area != 0] = False
 
-            _, component_count = cc3d.connected_components(neuron_mask, return_N=True)
-            if component_count != 1:
-                return False
+                _, component_count = cc3d.connected_components(neuron_mask, return_N=True)
+                if component_count != 1:
+                    return False
 
         con_components, component_count = cc3d.connected_components(mask, return_N=True, connectivity=6)
         if component_count == 1:
