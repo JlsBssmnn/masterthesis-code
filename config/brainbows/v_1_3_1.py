@@ -5,7 +5,7 @@ class Config:
   branching_neuron_prob = 0.15
   cmap = './data/brainbow_colors.h5'
   cmap_dataset = 'colors'
-  image_size = (128, 256, 256)
+  image_size = (136, 512, 512)
   large_rotation_prob = 0.05
   max_branch_rotation = np.pi / 3
   max_branches = 3
@@ -19,11 +19,11 @@ class Config:
   min_thickness = [1, 2, 4]
   min_thickness_probabilities = [0.6, 0.375, 0.025]
   min_voxel_per_neuron = 1000
-  neuron_count = 10
+  neuron_count = 189
   noise_resolution_factor = 32
   refinement_noise_intensity = 2
   refinement_noise_resolution_factor = 8
-  retries = 50
+  retries = 10000
   scaling = (1, 2, 2)
   seed = 0
   shortest_path_search_area = [40, 40, 40]
