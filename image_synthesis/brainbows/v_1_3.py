@@ -66,22 +66,32 @@ class BrainbowGenerator:
         self.noise[self.noise > 0] = 0
 
         self.direction_rotater = DirectionRotater(config)
+
+        if config.scaling is None:
+            self.dt_sampling = (1, 1, 1)
+        else:
+            self.dt_sampling = min(config.scaling) / np.array(config.scaling)
         logging.info('Generated Perlin Noise')
 
     def create_images(self):
         self.image = np.zeros(self.config.image_size, dtype=np.uint16)
         self.neuron_buffer = np.empty(self.config.image_size, dtype=np.uint8)
         self.dodge_locations = []
+        self.neuron_info = {}
         retries = self.config.retries
         self.neuron_count = 0
         logging.info('beginning the neuron generation loop')
 
         while self.neuron_count < self.config.neuron_count and retries > 0:
+            self.neuron_info.clear()
             start_point, start_direction = self.create_start_point()
             self.create_neuron(start_point, start_direction)
             self.neuron_post_process()
 
-            if not self.insert_new_neuron():
+            if self.insert_new_neuron():
+                logging.info('created neuron %d: %s', self.neuron_count, self.neuron_info)
+            else:
+                logging.info('neuron dropped (neuron_count is %d)', self.neuron_count)
                 retries -= 1
 
         logging.info('finished generation of synthetic brainbows with a total of %d neurons', self.neuron_count)
@@ -239,6 +249,9 @@ class BrainbowGenerator:
             p = utils.rotate_point_3d(utils.rotation_matrices[axis]\
                     (utils.random_float(-self.config.max_rotation_large, self.config.max_rotation_large)), p, start_point)
         start_direction = utils.norm(p - start_point)
+
+        self.neuron_info['start_point'] = start_point
+        self.neuron_info['start_direction'] = start_direction
         return start_point, start_direction
 
     def create_neuron(self, start_point, start_direction):
@@ -297,7 +310,7 @@ class BrainbowGenerator:
             min_thickness = self.config.min_thickness
             largest_min_thickness = self.config.min_thickness
 
-        dist_transform = cast(npt.NDArray, ndi.distance_transform_edt(self.neuron_buffer))
+        dist_transform = cast(npt.NDArray, ndi.distance_transform_edt(self.neuron_buffer, sampling=self.dt_sampling))
         free_space = self.image == 0
         self.neuron_buffer[(dist_transform <= 1) & free_space] = 0
         
@@ -312,6 +325,10 @@ class BrainbowGenerator:
 
         self.thicken_dodge_parts(dist_transform, noise_intensity)
         self.neuron_buffer[(dist_transform < min_thickness) & free_space] = 0
+
+        self.neuron_info['min_thickness'] = min_thickness
+        self.neuron_info['max_thickness'] = max_thickness
+        self.neuron_info['dodge_locations'] = self.dodge_locations
 
     def thicken_dodge_parts(self, dist_transform, thickness):
         """
@@ -348,7 +365,7 @@ class BrainbowGenerator:
             line = skimage.draw.line_nd(dodge_start - area_origin, dodge_end - area_origin, endpoint=True)
             dodge_area[line] = 0
 
-            thickening_distances = cast(npt.NDArray, ndi.distance_transform_edt(dodge_area))
+            thickening_distances = cast(npt.NDArray, ndi.distance_transform_edt(dodge_area, sampling=self.dt_sampling))
             thickening_mask = thickening_distances <= thickness
 
             dist_transform[dodge_mask][thickening_mask] -= self.config.thickening_strenght

@@ -7,7 +7,6 @@ import h5py
 sys.path.append(str(pathlib.Path(__file__).parent.parent.resolve()))
 from image_synthesis.brainbows.colorize_brainbows import colorize_brainbows_cmap
 from image_synthesis.logging_config import logging
-from image_synthesis.utils import scale_image
 
 def open_h5(path, *datasets_to_create):
     if os.path.isfile(path):
@@ -28,19 +27,14 @@ def main(opt):
         logging.warning('Config %s seems to not match generation algorithm %s!', opt.config, opt.algorithm)
 
     label_dset_name = 'label'
-    label_scaled_dset_name = 'label_scaled'
     color_dset_name = 'color'
     if opt.name is not None:
         label_dset_name = opt.name + '_' + label_dset_name
-        label_scaled_dset_name = opt.name + '_' + label_scaled_dset_name
         color_dset_name = opt.name + '_' + color_dset_name
 
     BrainbowGenerator = importlib.import_module('image_synthesis.brainbows.' + opt.algorithm).BrainbowGenerator
     config = importlib.import_module('config.brainbows.' + opt.config).config
-    if config.post_scaling:
-        f, action = open_h5(opt.output, label_dset_name, label_scaled_dset_name, color_dset_name)
-    else:
-        f, action = open_h5(opt.output, label_dset_name, color_dset_name)
+    f, action = open_h5(opt.output, label_dset_name, color_dset_name)
 
     generator = BrainbowGenerator(config)
     image = generator.create_images()
@@ -50,16 +44,6 @@ def main(opt):
     attr['config'] = opt.config
 
     colorized = colorize_brainbows_cmap(opt.output, label_dset_name, config.cmap, config.cmap_dataset)
-    if config.post_scaling:
-        image_scaled = scale_image(image, config.post_scaling)
-        dataset = f.create_dataset(label_scaled_dset_name, data=image_scaled)
-        attr = dataset.attrs
-        attr['config'] = opt.config
-        attr['element_size_um'] = [0.2, 0.1, 0.1]
-
-        colorized = scale_image(colorized, config.post_scaling)
-        logging.info('Scaled image by %s', config.post_scaling)
-
     dataset = f.create_dataset(color_dset_name, data=colorized)
     attr = dataset.attrs
     attr['config'] = opt.config
