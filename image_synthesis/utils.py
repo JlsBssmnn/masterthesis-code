@@ -114,10 +114,10 @@ def slice_by_plane(shape, normal, d):
     base_dim = list(base_dim)
 
     axis1, axis2 = np.meshgrid(np.arange(shape[base_dim[0]]), np.arange(shape[base_dim[1]]))
-    axis3 = np.rint(np.minimum( \
-            (d - normal[base_dim[0]] * axis1 - normal[base_dim[1]] * axis2) / normal[dim], \
-            shape[dim] - 1)) \
-        .astype(int)
+    axis3 = np.rint(np.maximum(np.minimum( \
+              (d - normal[base_dim[0]] * axis1 - normal[base_dim[1]] * axis2) / normal[dim], \
+            shape[dim] - 1), \
+            0)).astype(int)
 
     r_value = [axis1, axis2]
     r_value.insert(dim, axis3)

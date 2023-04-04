@@ -37,7 +37,11 @@ def main(opt):
     f, action = open_h5(opt.output, label_dset_name, color_dset_name)
 
     generator = BrainbowGenerator(config)
-    image = generator.create_images()
+    try:
+        image = generator.create_images()
+    except Exception as e:
+        logging.error('exception thrown: %s', e)
+        image = generator.image
 
     dataset = f.create_dataset(label_dset_name, data=image)
     attr = dataset.attrs
