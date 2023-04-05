@@ -15,7 +15,7 @@ def neuroglancer_viewer(images: list, names: list = None, scales: list = None, o
     viewer = neuroglancer.Viewer()
     with viewer.txn() as state:
         dimensions = neuroglancer.CoordinateSpace(names=['z', 'y', 'x'],
-                                                  units='nm',
+                                                  units='µm',
                                                   scales=scales[0])
         state.dimensions = dimensions
 
@@ -35,7 +35,7 @@ def neuroglancer_viewer(images: list, names: list = None, scales: list = None, o
                         data=img,
                         dimensions=neuroglancer.CoordinateSpace(
                             names=['c^', 'z', 'y', 'x'],
-                            units=['', 'nm', 'nm', 'nm'],
+                            units=['', 'µm', 'µm', 'µm'],
                             scales=(1,) + scale,
                             coordinate_arrays=[
                                 neuroglancer.CoordinateArray(labels=['red', 'green', 'blue', 'yellow']), None, None, None,
@@ -56,7 +56,7 @@ void main() {
                         data=img,
                         dimensions=neuroglancer.CoordinateSpace(
                             names=['z', 'y', 'x'],
-                            units='nm',
+                            units='µm',
                             scales=scale)
                     )
                 )
