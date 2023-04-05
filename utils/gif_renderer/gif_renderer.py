@@ -10,8 +10,8 @@ import h5py
 from typing import cast
 import numpy as np
 from PIL import Image
-import sys
 import importlib
+import filters
 
 def extract_datasets(file, directory):
     if type(file[directory]) == h5py.Dataset:
@@ -26,11 +26,21 @@ def extract_datasets(file, directory):
         raise Exception("The provided directory is neither dataset nor group")
     return datasets
 
+def create_filters(opt):
+    filter_functions = [getattr(filters, filter_name) for filter_name in opt.filters]
+    def composed_filter(image):
+        for filter_name, filter in zip(opt.filters, filter_functions):
+            image = filter(image, **opt.filters[filter_name])
+        return image
+
+    return composed_filter
+
 def main(opt):
     f = h5py.File(opt.input_file)
     directories = opt.directories
     os.makedirs(opt.output_dir, exist_ok=True)
     images = []
+    filter_func = create_filters(opt)
 
     for directory in directories:
         images.extend(extract_datasets(f, directory))
@@ -52,7 +62,7 @@ def main(opt):
                 return dataset_name + '.gif'
 
     for i, dataset in enumerate(images):
-        image = np.asarray(dataset)
+        image = filter_func(np.asarray(dataset))
         if image.ndim == 4:
             assert np.argmin(image.shape) == 0, "Color channel must be in the first dimension"
             if image.shape[0] == 1:
@@ -74,23 +84,10 @@ def main(opt):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
-        print('Not enough arguments.')
-        exit()
-    elif sys.argv[1] == 'config':
-        opt = importlib.import_module(sys.argv[2]).options
-    else:
-        parser = argparse.ArgumentParser()
-        parser.add_argument('input_file', type=str, help='The file that contains the 3D image')
-        parser.add_argument('output_dir', type=str, help='The directory where the gif files are stored')
-        parser.add_argument('-d', '--directories', default='/', nargs='+', type=str, help='The dataset or group in the h5 file that contains the 3D images')
-        parser.add_argument('-n', '--names', default=[], nargs='+', type=str, help='The names of the output files. If less names than files are provided, \
-                            the default naming is applied after the name list is depleted which may overwrite created gifs')
-        parser.add_argument('-s', '--slice_axis', default=0, type=int, help='The axis in the image that the gif is moving along over the frames')
-        parser.add_argument('--duration', default=100, type=int, help='The duration of one gif frame in milliseconds')
-        parser.add_argument('--loop', default=0, type=int, help='How often the gif loops, 0 means infinitelly')
-        parser.add_argument('--add_reverse', action='store_true', help='If set, the reversed order of frames is added to the gif to enable smooth loops')
+    parser = argparse.ArgumentParser(description='Render gifs from an h5 file. For a sample config see the sample_config.py file.')
+    parser.add_argument('config', type=str, help='Which config in the ./configs directory to use')
+    opt = parser.parse_args()
 
-        opt = parser.parse_args()
+    config = importlib.import_module(f'configs.{opt.config}').config
 
-    main(opt)
+    main(config)

@@ -2,3 +2,5 @@ __pycache__
 .ipynb_checkpoints
 .vscode
 data/
+git_ignored/
+utils/gif_renderer/configs
