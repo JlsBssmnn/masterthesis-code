@@ -1,0 +1,16 @@
+figure.titlesize : 35
+figure.figsize: 18, 10.125
+
+axes.titlesize : 25
+axes.labelsize : 20
+
+lines.linewidth : 2
+lines.markersize : 10
+
+xtick.labelsize: 15
+ytick.labelsize: 15
+
+legend.fontsize: 15
+
+savefig.pad_inches: 0
+savefig.bbox: tight
