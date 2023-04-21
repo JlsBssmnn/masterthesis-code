@@ -69,9 +69,16 @@ def main(opt):
                 image = image[0]
             else:
                 image = np.moveaxis(image, 0, -1)
+                if image.shape[-1] > 3:
+                    # reduce to 3 color channels like neuroglancer does
+                    channel_selection = image[:, :, :, 2:]
+                    channel_selection = np.minimum(np.sum(channel_selection, axis=-1), 255)
+                    image[:, :, :, 2] = channel_selection
+                    image = image[:, :, :, :3]
         else:
             assert image.ndim == 3, "Images must be either 3D or 4D"
 
+        image = np.moveaxis(image, 1, 2) # swap x- and y-axis
         dim = image.ndim
         initial_frame = Image.fromarray(image[index(0, dim)])
         additional_frames = [Image.fromarray(image[index(x, dim)]) for x in range(1, image.shape[opt.slice_axis])]
