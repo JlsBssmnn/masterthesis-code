@@ -1,9 +1,6 @@
 import importlib
 import neuroglancer
 import numpy as np
-import argparse
-import h5py
-from skimage import io
 
 def neuroglancer_viewer(images: list, names: list = None, scales: list = None, options = None):
     if names is None:
@@ -20,6 +17,8 @@ def neuroglancer_viewer(images: list, names: list = None, scales: list = None, o
         state.dimensions = dimensions
 
         for name, img, scale in zip(names, images, scales):
+            if img.ndim == 4 and img.shape[0] == 1:
+                img = img[0]
 
             if img.ndim == 4:
                 if img.shape[-1] == 4:
@@ -63,46 +62,11 @@ void main() {
             else:
                 raise ValueError("Invalid image shape", img.shape)
     
-    if options.setting is not None:
+    if options is not None and options.setting is not None:
+        import sys
+        import pathlib
+        sys.path.append(str(pathlib.Path(__file__).parent))
         importlib.import_module(f'settings.{options.setting}').setting(viewer, **options.setting_options)
+        del sys.path[-1]
 
     return viewer
-
-
-class StoreDictKeyPair(argparse.Action):
-     def __init__(self, option_strings, dest, nargs=None, **kwargs):
-         self._nargs = nargs
-         super(StoreDictKeyPair, self).__init__(option_strings, dest, nargs=nargs, **kwargs)
-     def __call__(self, parser, namespace, values, option_string=None):
-         my_dict = {}
-         for kv in values:
-             k,v = kv.split("=")
-             my_dict[k] = v
-         setattr(namespace, self.dest, my_dict)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('file_path', help='Path to the file that contains the image')
-    parser.add_argument('--dataset_name', default=None, help='Name of the dataset that contains the image')
-    parser.add_argument('--scales', default=None, nargs=3, type=float, help='Scaling factor for the image')
-    parser.add_argument('--slice', default=None, type=str, help='Specify a slice of the image that shall be shown')
-    parser.add_argument('--setting', default=None, type=str, help='One of the defined settings to change the settings of neuroglancer')
-    parser.add_argument('--setting_options', default=dict(), action=StoreDictKeyPair, nargs="+", metavar="KEY=VAL", help='Options that are passed to the setting')
-    opt = parser.parse_args()
-
-    if opt.file_path.endswith('.h5'):
-        if opt.dataset_name is None:
-            raise Exception('If h5 is used, --dataset_name must be provided')
-        with h5py.File(opt.file_path) as f:
-            img = np.asarray(f[opt.dataset_name])
-    elif opt.file_path.endswith('.tif') or opt.file_path.endswith('.tiff'):
-        img = io.imread(opt.file_path)
-    else:
-        raise NotImplementedError('File extension not supported')
-
-    if opt.slice is not None:
-        img = eval(f'img[{opt.slice}]') 
-    viewer = neuroglancer_viewer([img], scales=[tuple(opt.scales)], options=opt)
-    print(viewer)
-    input("Done?")
