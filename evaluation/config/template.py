@@ -22,6 +22,8 @@ class SegmentationConfig:
                                                  # used for determining the undersegmentation, second for oversegmentation
     ground_truth_file: str                       # The file containing the ground truth
     image_names: list[str]                       # Names of images. This will be used to store evaluation metrics for the images
+    local_error_a: float                         # The a parameter for computing the local error
+    local_error_b: float                         # The b parameter for computing the local error
     local_error_measure: str                     # Name of the measure that is used for the local error
     membrane_black: bool                         # True if the membrane color is black, False if it's white
     membrane_range: tuple[float, float, float]   # start, stop and step values for searching for membrane threshold parameters

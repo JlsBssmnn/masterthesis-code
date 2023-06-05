@@ -79,8 +79,17 @@ class Evaluater:
         return path / file_name
 
     def compute_score(self, evaluation):
-        return self.config.error_factor * (evaluation.variation_of_information) + \
-            (1 - self.config.error_factor) * (2 - 2 * getattr(evaluation, self.config.local_error_measure))
+        vi_part = self.config.error_factor * (evaluation.variation_of_information)
+
+        local_error_measure = getattr(evaluation, self.config.local_error_measure)
+        if local_error_measure <= self.config.local_error_a:
+            local_error = ((1-self.config.local_error_b) / self.config.local_error_a - 1) * \
+                local_error_measure + self.config.local_error_b
+        else:
+            local_error = 1 - local_error_measure
+        local_error *= (1 - self.config.error_factor)
+        return vi_part + local_error
+            
 
     def find_segmentation_and_eval(self, images):
         assert len(images) == len(self.config.ground_truth_datasets)
