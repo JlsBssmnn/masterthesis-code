@@ -1,8 +1,10 @@
+import json
 import pathlib
 import sys
 import inspect
 from typeguard import check_type
 import h5py
+import numpy as np
 
 root_path = str(pathlib.Path(__file__).parent.parent)
 
@@ -17,17 +19,23 @@ def get_path(path):
     return pathlib.Path(root_path) / path
 
 def verify_config(config):
-    assert len(config.__class__.__bases__) == 1
-    base_class = config.__class__.__bases__[0]
+    def verify_with_base_class(obj):
+        assert len(obj.__class__.__bases__) == 1
+        base_class = obj.__class__.__bases__[0]
 
-    for attr, attr_type in inspect.get_annotations(base_class).items():
-        check_type(getattr(config, attr), attr_type)
+        for attr, attr_type in inspect.get_annotations(base_class).items():
+            check_type(getattr(obj, attr), attr_type)
 
+        obj_attrs = set([x for x in vars(obj.__class__).keys() if not x.startswith('__')])
+        attrs = set(inspect.get_annotations(base_class).keys())
+
+        if len(obj_attrs - attrs) != 0:
+            raise ValueError(f'Attributes {obj_attrs - attrs} should not be defined for {base_class.__name__}')
+
+    verify_with_base_class(config)
     config_attrs = set([x for x in vars(config.__class__).keys() if not x.startswith('__')])
-    attrs = set(inspect.get_annotations(base_class).keys())
-
-    if len(config_attrs - attrs) != 0:
-        raise ValueError(f'Attributes {config_attrs - attrs} should not be defined for {base_class.__name__}')
+    for attr in config_attrs:
+        verify_with_base_class(getattr(config, attr))
 
 def save_images(file_name, images, datasets):
     """
@@ -47,3 +55,13 @@ def save_images(file_name, images, datasets):
         with h5py.File(output_path, 'w-') as f:
             for dataset, output in zip(datasets, images):
                 f.create_dataset(dataset, data=output)
+
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)

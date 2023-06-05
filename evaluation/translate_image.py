@@ -25,14 +25,13 @@ def compute_patch_locations(input_shape, patch_size, stride):
     z, y, x = z.flatten(), y.flatten(), x.flatten()
     return np.stack((z, y, x), 0).T
 
+@torch.no_grad()
 def apply_generator(input, generator, config: TranslateImageConfig):
     """
     This function applies the provided generator to the provided input. This is done by feeding small patches of the
     input into the generator. The output for these patches is then aggregated via averaging to construct the output for
     the entire input.
     """
-    logging.info('Start apply_generator function')
-
     patch_size = np.array(config.patch_size)
     stride = np.array(config.stride)
     out_shape = (config.generator_config.output_nc,) + input.shape[-3:]
@@ -89,7 +88,6 @@ def apply_generator(input, generator, config: TranslateImageConfig):
 
     outputs = np.nanmean(outputs, axis=0)
     assert not np.all(np.isnan(outputs)), 'There should be no NaN value left in outputs'
-    logging.info('End of apply_generator function')
     return outputs
 
 
@@ -107,17 +105,17 @@ def translate_image(config: TranslateImageConfig):
         for slice_string in s:
             images.append(np.asarray(eval(f'image[{slice_string}]')))
 
+    generator = define_G(**object_to_dict(config.generator_config))
+    sucess = generator.load_state_dict(torch.load(get_path(config.generator_save)))
+    logging.info(sucess)
+    if config.use_gpu:
+        generator.to(0)
+
     outputs = []
 
     for image in images:
         image = (image / 127.5) - 1
         image = torch.tensor(image)
-
-        generator = define_G(**object_to_dict(config.generator_config))
-        sucess = generator.load_state_dict(torch.load(get_path(config.generator_save)))
-        logging.info(sucess)
-        if config.use_gpu:
-            generator.to(0)
 
         output = apply_generator(image, generator, config)
         output = ((output + 1) * 127.5).astype(np.uint8)

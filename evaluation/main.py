@@ -8,14 +8,12 @@ def config_verified(_):
 
 def perform_all_steps(config):
     images = translate_image.translate_image(config.translate_image_config)
-    images, segmentation_config = create_segmentation.create_segmentation(images, config.segmentation_config)
-    compute_eval.compute_eval(config, images, segmentation_config)
+    evaluate_image.find_segmentation_and_eval(images, config.segmentation_config)
 
 if __name__ == '__main__':
     extend_path()
     from evaluation import translate_image
-    from evaluation import create_segmentation
-    from evaluation import compute_eval
+    from evaluation import evaluate_image
 
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(required=True)
@@ -29,17 +27,12 @@ if __name__ == '__main__':
     translate_image_parser.set_defaults(func=(lambda config: translate_image.one_step(config.translate_image_config)))
     translate_image_parser.add_argument('config', type=str, help='The config which shall be used')
 
-    segmentation_tuner_parser = subparsers.add_parser('segmentation_tuner', help='Given network output, you can tweak the '
-                                                      'settings for building a segmetation for this output.')
-    segmentation_tuner_parser.set_defaults(func=(lambda config: create_segmentation.one_step(config.segmentation_config)))
+    segmentation_tuner_parser = subparsers.add_parser('segment_and_eval', aliases=['se'], help='Given network output, find the best '
+                                                      'segmetations and compute an evaluation for them.')
+    segmentation_tuner_parser.set_defaults(func=(lambda config: evaluate_image.one_step(config.segmentation_config)))
     segmentation_tuner_parser.add_argument('config', type=str, help='The config which shall be used')
 
-    compute_eval_parser = subparsers.add_parser('compute_eval', help='Given a segmentation and ground truth, '
-                                                'evaluation metrics are computed')
-    compute_eval_parser.set_defaults(func=compute_eval.one_step)
-    compute_eval_parser.add_argument('config', type=str, help='The config which shall be used')
-
-    evaluation_parser = subparsers.add_parser('evaluate', help='Evaluates a model. This performs all 3 stages.')
+    evaluation_parser = subparsers.add_parser('evaluate', help='Evaluates a model. This performs the 2 stages.')
     evaluation_parser.set_defaults(func=perform_all_steps)
     evaluation_parser.add_argument('config', type=str, help='The config which shall be used')
 

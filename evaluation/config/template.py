@@ -1,14 +1,14 @@
 from typing import Any
 
 class TranslateImageConfig:
-    input_file: str                  # The file that contains the input image
-    generator_save: str              # Path to the saved generator
-    generator_config: Any            # The parameters that the generator was created with (as another object)
-    slices: list[str] | None         # Python slice strings. If provided only these parts of the input are fed to the generator.
-    input_dataset: str               # The dataset which contains the input image
-    patch_size: tuple[int, int, int] # The input size for the generator
-    stride: tuple[int, int, int]     # The stride for moving the through the input image
     batch_size: int                  # How many input patches are fed into the generator at once
+    generator_config: Any            # The parameters that the generator was created with (as another object)
+    generator_save: str              # Path to the saved generator
+    input_dataset: str               # The dataset which contains the input image
+    input_file: str                  # The file that contains the input image
+    patch_size: tuple[int, int, int] # The input size for the generator
+    slices: list[str] | None         # Python slice strings. If provided only these parts of the input are fed to the generator.
+    stride: tuple[int, int, int]     # The stride for moving the through the input image
     use_gpu: bool                    # Whether to do the inference on the gpu
 
     # these properties are only used in the one_step function
@@ -16,31 +16,28 @@ class TranslateImageConfig:
     output_file: str | None           # Path to the output file (where result is written to)
 
 class SegmentationConfig:
-    slice_str: str       # A python slice specifying which part of the generator output is used for segmentation
-    tweak_image_idx: int # The index of the image that is used for tweaking the settings
-    membrane_black: bool # True if the membrane color is black, False if it's white
+    basins_range: tuple[float, float, float]     # start, stop and step values for searching for basin threshold parameters
+    error_factor: float                          # The factor that is used to combine global and local error
+    ground_truth_datasets: list[tuple[str, str]] # The datasets in the ground truth file that contain the images. The first dataset is
+                                                 # used for determining the undersegmentation, second for oversegmentation
+    ground_truth_file: str                       # The file containing the ground truth
+    image_names: list[str]                       # Names of images. This will be used to store evaluation metrics for the images
+    local_error_measure: str                     # Name of the measure that is used for the local error
+    membrane_black: bool                         # True if the membrane color is black, False if it's white
+    membrane_range: tuple[float, float, float]   # start, stop and step values for searching for membrane threshold parameters
+    save_directory: str                          # The directory where to save the results
+    save_file_name: str                          # The name of the saved file
+    save_results: bool                           # If true, save results to a file, else just print results
+    show_progress: bool                          # If true, a progress bar will indicate the progress
+    show_segmentation: bool                      # If true, the segmentation images will be shown
+    slice_str: str                               # A python slice specifying which part of the generator output is used for segmentation
 
     # these properties are only used in the one_step function
     input_file: str | None            # The file for loading the images
     input_datasets: list[str] | None  # The datasets in the input file which shall be used
-    output_file: str | None           # The file for saving the output
-    output_datasets: list[str] | None # The datasets for saving the output
-    config_output_file: str | None    # The file for storing the chosen segmentation config
-
-class EvaluationConfig:
-    ground_truth_file: str                 # The file containing the ground truth
-    ground_truth_datasets: list[list[str]] # The datasets in the ground truth file that contain the images. Each
-                                           # list[str] can specify multiple ground truths for one image
-    save_directory: str | None             # Where to save the results. The file name will be inferred. If None don't save.
-
-    # these properties are only used in the one_step function
-    segmentation_file: str | None           # The file that contains the segmentation result
-    segmentation_datasets: list[str] | None # The datasets containing the segmentation images
-    config_file: str | None                 # The file that stores the config that was used to achieve the segmentation
 
 class Config:
     translate_image_config: TranslateImageConfig
     segmentation_config: SegmentationConfig
-    evaluation_config: EvaluationConfig
 
 config = TranslateImageConfig()
