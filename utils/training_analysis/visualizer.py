@@ -2,6 +2,7 @@ from collections import defaultdict
 import importlib
 import matplotlib.pyplot as plt
 import os
+import re
 import pathlib
 
 def plot_losses(losses: list[dict[str, float]], options):
@@ -24,7 +25,7 @@ def plot_losses(losses: list[dict[str, float]], options):
     for loss in data:
         show_loss = loss not in options.omit
         if options.show_only is not None:
-            show_loss &= loss in options.show_only
+            show_loss &= any([re.search(loss_exp, loss) is not None for loss_exp in options.show_only])
         if show_loss:
             ax.plot(x, data[loss], label=loss)
     ax.legend()

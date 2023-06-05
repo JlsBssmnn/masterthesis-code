@@ -23,8 +23,8 @@ if __name__ == '__main__':
     loss_plot_parser.add_argument('--iteration_variable', default='iters', help='The name of the iteration variable that is used for the x-axis')
     loss_plot_parser.add_argument('--omit', default=[], nargs='*', help='Names of losses that should not be displayed')
     loss_plot_parser.add_argument('--show_only', default=None, nargs='+', help='If specified only these losses will be shown')
-    loss_plot_parser.add_argument('--setting', default=None, help='The settings file that shall be applied')
-    loss_plot_parser.add_argument('--style', default=None, help='The style that shall be applied')
+    loss_plot_parser.add_argument('--setting', default="losses_per_iteration", help='The settings file that shall be applied')
+    loss_plot_parser.add_argument('--style', default="style_1", help='The style that shall be applied')
     loss_plot_parser.add_argument('--output_file', default=None, help='If specified save figure to that file')
 
     image_viewer = subparsers.add_parser('images')
