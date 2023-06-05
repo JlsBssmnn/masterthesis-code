@@ -1,7 +1,7 @@
 import argparse
 import h5py
 import numpy as np
-from scipy.ndimage import label
+from skimage.morphology import label
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='This script takes in black-white images of cells segmentation and '
@@ -24,8 +24,8 @@ if __name__ == '__main__':
         cell_truth_image = image == args.cell_label
         membrane_truth_image = image != args.membrane_label
 
-        cell_truth_label = label(cell_truth_image)[0]
-        membrane_truth_label = label(membrane_truth_image)[0]
+        cell_truth_label = label(cell_truth_image)
+        membrane_truth_label = label(membrane_truth_image, connectivity=1)
 
         f.create_dataset(f'{key}_cell_truth', data=cell_truth_label)
         f.create_dataset(f'{key}_membrane_truth', data=membrane_truth_label)
