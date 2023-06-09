@@ -1,12 +1,14 @@
 from skimage.metrics import variation_of_information
+import numpy as np
 
 class Evaluation:
-    def __init__(self, under_segmentation, over_segmentation, segmentation, acc):
+    def __init__(self, under_segmentation, over_segmentation, segmentation, acc, diff):
         self.under_segmentation = under_segmentation
         self.over_segmentation = over_segmentation
         self.variation_of_information = under_segmentation + over_segmentation
         self.segmentation = segmentation
         self.acc = acc
+        self.diff = diff
 
     def write_to_dict(self, d):
         """
@@ -16,8 +18,10 @@ class Evaluation:
         d["over_segmentation"] = self.over_segmentation
         d["variation_of_information"] = self.variation_of_information
         d["acc"] = self.acc
+        d["diff"] = self.diff
 
-def evaluate_segmentation_epithelial(segmentation, membrane_truth, cell_truth):
+def evaluate_segmentation_epithelial(image, segmentation, membrane_truth, cell_truth, membrane_black):
+    # compute VI
     segmentation_cells = (segmentation != 0)
     membrane_mask = segmentation_cells & (membrane_truth != 0)
     cell_mask = segmentation_cells & (cell_truth != 0)
@@ -32,8 +36,14 @@ def evaluate_segmentation_epithelial(segmentation, membrane_truth, cell_truth):
     else:
         over_segmentation = float('nan')
 
+    # compute acc
     cell_mask = cell_truth != 0
     pred_cells = segmentation[cell_mask] != 0
     acc = pred_cells.sum() / cell_mask.sum()
 
-    return Evaluation(under_segmentation, over_segmentation, segmentation, acc)
+    # compute diff
+    cell_diff = image[cell_truth != 0] - membrane_black
+    membrane_diff = image[membrane_truth == 0] - (not membrane_black)
+    diff = (np.append(cell_diff, membrane_diff) ** 2).mean()
+
+    return Evaluation(under_segmentation, over_segmentation, segmentation, acc, diff)

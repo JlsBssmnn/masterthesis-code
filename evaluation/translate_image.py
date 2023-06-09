@@ -118,7 +118,7 @@ def translate_image(config: TranslateImageConfig):
         image = torch.tensor(image)
 
         output = apply_generator(image, generator, config)
-        output = ((output + 1) * 127.5).astype(np.uint8)
+        output = ((output + 1) / 2) # normalize to range(0, 1)
         outputs.append(output)
     return outputs
 

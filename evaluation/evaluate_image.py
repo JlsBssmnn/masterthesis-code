@@ -5,12 +5,10 @@ import neuroglancer
 import h5py
 from tqdm import tqdm
 from skimage.segmentation import watershed
-from skimage.metrics import adapted_rand_error, variation_of_information
 import skimage
-from sklearn.metrics import precision_recall_fscore_support
 from pathlib import Path
 import numpy as np
-from evaluation.config.template import Config, SegmentationConfig
+from evaluation.config.template import SegmentationConfig
 from evaluation.evaluation_utils import NpEncoder, get_path
 from evaluation.evaluate_segmentation import Evaluation, evaluate_segmentation_epithelial
 from utils.neuroglancer_viewer.neuroglancer_viewer import show_image
@@ -92,13 +90,18 @@ class Evaluater:
             
 
     def find_segmentation_and_eval(self, images):
+        """
+        Find the best segmentation for the list of images. Image values should be in the range between 0 and 1.
+        """
         assert len(images) == len(self.config.ground_truth_datasets)
         assert len(images) == len(self.config.image_names)
 
         prog = tqdm(total=self.threshold_values.shape[0] * len(images), disable=not self.config.show_progress)
         segmentations = {}
+        images = list(map(lambda x: eval(f'x[{self.config.slice_str}]'), images))
+        images_uint8 = list(map(lambda x: (x * 255).astype(np.uint8), images))
+
         for i, image in enumerate(images):
-            image = eval(f'image[{self.config.slice_str}]')
             membrane_truth, cell_truth = self.ground_truths[i]
             result = {
                 "segmentation_parameters": (seg_params := {"tweak_image": self.config.image_names[i]}),
@@ -109,7 +112,7 @@ class Evaluater:
             best_score = float('inf')
             evaluation = None
             for basin_threshold, membrane_threshold in self.threshold_values:
-                evaluation = self.eval_image(image, basin_threshold, membrane_threshold, membrane_truth, cell_truth)
+                evaluation = self.eval_image(image, images_uint8[i], basin_threshold, membrane_threshold, membrane_truth, cell_truth)
 
                 score = self.compute_score(evaluation)
                 if score < best_score:
@@ -133,11 +136,10 @@ class Evaluater:
                 if i == j:
                     continue
 
-                other_image = eval(f'other_image[{self.config.slice_str}]')
                 other_image_result = result["evaluation_scores"][self.config.image_names[j]]
                 membrane_truth, cell_truth = self.ground_truths[j]
 
-                evaluation = self.eval_image(other_image, basin_threshold, membrane_threshold, membrane_truth, cell_truth)
+                evaluation = self.eval_image(other_image, images_uint8[j], basin_threshold, membrane_threshold, membrane_truth, cell_truth)
                 score = self.compute_score(evaluation)
                 evaluation.write_to_dict(other_image_result)
                 other_image_result["score"] = score
@@ -164,13 +166,13 @@ class Evaluater:
             webbrowser.open(str(viewer), new=0, autoraise=True)
             input("Done?")
 
-    def eval_image(self, image, basin_threshold, membrane_threshold, membrane_truth, cell_truth) -> Evaluation:
+    def eval_image(self, image, image_uint8, basin_threshold, membrane_threshold, membrane_truth, cell_truth) -> Evaluation:
         membrane_black = self.config.membrane_black
-        labels = skimage.morphology.label(image >= basin_threshold if membrane_black else image <= basin_threshold,
+        labels = skimage.morphology.label(image_uint8 >= basin_threshold if membrane_black else image_uint8 <= basin_threshold,
                                           connectivity=1)
-        segmentation =  watershed(-image if membrane_black else image, markers=labels,
-                         mask=image > membrane_threshold if membrane_black else image < membrane_threshold)
-        return evaluate_segmentation_epithelial(segmentation, membrane_truth, cell_truth)
+        segmentation =  watershed(-image_uint8 if membrane_black else image_uint8, markers=labels,
+                         mask=image_uint8 > membrane_threshold if membrane_black else image_uint8 < membrane_threshold)
+        return evaluate_segmentation_epithelial(image, segmentation, membrane_truth, cell_truth, membrane_black)
 
 def find_segmentation_and_eval(images, config: SegmentationConfig):
     evaluater = Evaluater(config)
