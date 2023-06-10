@@ -1,5 +1,5 @@
 import json
-from time import perf_counter
+from skimage.metrics import variation_of_information
 import webbrowser
 import neuroglancer
 import h5py
@@ -10,22 +10,45 @@ from pathlib import Path
 import numpy as np
 from evaluation.config.template import SegmentationConfig
 from evaluation.evaluation_utils import NpEncoder, get_path
-from evaluation.evaluate_segmentation import Evaluation, evaluate_segmentation_epithelial
 from utils.neuroglancer_viewer.neuroglancer_viewer import show_image
+
+class Evaluation:
+    def __init__(self, under_segmentation, over_segmentation, segmentation, acc):
+        self.under_segmentation = under_segmentation
+        self.over_segmentation = over_segmentation
+        self.variation_of_information = under_segmentation + over_segmentation
+        self.segmentation = segmentation
+        self.acc = acc
+
+    def write_to_dict(self, d):
+        """
+        Stores the evalution to the given dict `d`.
+        """
+        d["under_segmentation"] = self.under_segmentation
+        d["over_segmentation"] = self.over_segmentation
+        d["variation_of_information"] = self.variation_of_information
+        d["acc"] = self.acc
 
 class Evaluater:
     def __init__(self, config: SegmentationConfig, use_get_path=True):
         self.config = config
+        self.membrane_black = self.config.membrane_black
 
         self.ground_truths = []
+        self.ground_truth_masks = [] # stores masks for ground truths indicating which pixels actually can be considered
+                                     # as truth (i.e. for membrane truth all membrane pixels, for cell truth all cell pixels)
+        self.cell_truth_pixels = []  # The number of pixels that are cells in each cell truth
         datasets = self.config.ground_truth_datasets
         ground_truth_path = get_path(self.config.ground_truth_file) if use_get_path else self.config.ground_truth_file
+
         with h5py.File(ground_truth_path, 'r') as f:
             for dataset_list in datasets:
-                image_ground_truths = []
-                for dataset in dataset_list:
-                    image_ground_truths.append(np.asarray(f[dataset]))
-                self.ground_truths.append(image_ground_truths)
+                assert len(dataset_list) == 2, 'For epithelial sheet, cell and membrane truth are neede'
+                membrane_truth = np.asarray(f[dataset_list[0]])
+                cell_truth = np.asarray(f[dataset_list[1]])
+                self.ground_truths.append([membrane_truth, cell_truth])
+                self.ground_truth_masks.append([membrane_truth == 0, cell_truth != 0])
+                self.cell_truth_pixels.append((cell_truth != 0).sum())
 
         self.results = {
             "config": {
@@ -112,7 +135,7 @@ class Evaluater:
             best_score = float('inf')
             evaluation = None
             for basin_threshold, membrane_threshold in self.threshold_values:
-                evaluation = self.eval_image(image, images_uint8[i], basin_threshold, membrane_threshold, membrane_truth, cell_truth)
+                evaluation = self.eval_image(images_uint8[i], basin_threshold, membrane_threshold, membrane_truth, cell_truth, i)
 
                 score = self.compute_score(evaluation)
                 if score < best_score:
@@ -124,6 +147,9 @@ class Evaluater:
                     segmentations[f"slice{i}"] = evaluation.segmentation
                 prog.update()
 
+            diff = self.compute_diff(image, i)
+            tweak_image_result["diff"] = diff
+
             if best_score == float('inf'):
                 evaluation.write_to_dict(tweak_image_result)
                 self.results["evaluation"].append(result) 
@@ -132,14 +158,14 @@ class Evaluater:
             basin_threshold = seg_params["basin_threshold"]
             membrane_threshold = seg_params["membrane_threshold"]
 
-            for j, other_image in enumerate(images):
+            for j in range(len(images)):
                 if i == j:
                     continue
 
                 other_image_result = result["evaluation_scores"][self.config.image_names[j]]
                 membrane_truth, cell_truth = self.ground_truths[j]
 
-                evaluation = self.eval_image(other_image, images_uint8[j], basin_threshold, membrane_threshold, membrane_truth, cell_truth)
+                evaluation = self.eval_image(images_uint8[j], basin_threshold, membrane_threshold, membrane_truth, cell_truth, j)
                 score = self.compute_score(evaluation)
                 evaluation.write_to_dict(other_image_result)
                 other_image_result["score"] = score
@@ -148,9 +174,7 @@ class Evaluater:
         return segmentations
 
     def eval_and_store(self, images):
-        start = perf_counter()
         segmentations = self.find_segmentation_and_eval(images)
-        print(f'find_segmentation_and_eval took {perf_counter() - start}s')
 
         json_string = json.dumps(self.results, indent=4, cls=NpEncoder)
         if self.config.save_results:
@@ -166,13 +190,38 @@ class Evaluater:
             webbrowser.open(str(viewer), new=0, autoraise=True)
             input("Done?")
 
-    def eval_image(self, image, image_uint8, basin_threshold, membrane_threshold, membrane_truth, cell_truth) -> Evaluation:
-        membrane_black = self.config.membrane_black
-        labels = skimage.morphology.label(image_uint8 >= basin_threshold if membrane_black else image_uint8 <= basin_threshold,
+    def eval_image(self, image_uint8, basin_threshold, membrane_threshold, membrane_truth, cell_truth, i) -> Evaluation:
+        # compute segmentation
+        labels = skimage.morphology.label(image_uint8 >= basin_threshold if self.membrane_black else image_uint8 <= basin_threshold,
                                           connectivity=1)
-        segmentation =  watershed(-image_uint8 if membrane_black else image_uint8, markers=labels,
-                         mask=image_uint8 > membrane_threshold if membrane_black else image_uint8 < membrane_threshold)
-        return evaluate_segmentation_epithelial(image, segmentation, membrane_truth, cell_truth, membrane_black)
+        segmentation =  watershed(-image_uint8 if self.membrane_black else image_uint8, markers=labels,
+                         mask=image_uint8 > membrane_threshold if self.membrane_black else image_uint8 < membrane_threshold)
+
+        # compute VI
+        segmentation_cells = (segmentation != 0)
+        membrane_mask = segmentation_cells & (membrane_truth != 0)
+        cell_mask = segmentation_cells & self.ground_truth_masks[i][1]
+
+        if membrane_mask.any():
+            _, under_segmentation = variation_of_information(membrane_truth[membrane_mask], segmentation[membrane_mask], ignore_labels=[0])
+        else:
+            under_segmentation = float('nan')
+
+        if cell_mask.any():
+            over_segmentation, _ = variation_of_information(cell_truth[cell_mask], segmentation[cell_mask], ignore_labels=[0])
+        else:
+            over_segmentation = float('nan')
+
+        # compute acc
+        pred_cells = segmentation[self.ground_truth_masks[i][1]] != 0
+        acc = pred_cells.sum() / self.cell_truth_pixels[i]
+
+        return Evaluation(under_segmentation, over_segmentation, segmentation, acc)
+
+    def compute_diff(self, image, i):
+        membrane_diff = image[self.ground_truth_masks[i][0]] - (not self.membrane_black)
+        cell_diff = image[self.ground_truth_masks[i][1]] - self.membrane_black
+        return (np.append(cell_diff, membrane_diff) ** 2).mean()
 
 def find_segmentation_and_eval(images, config: SegmentationConfig):
     evaluater = Evaluater(config)
