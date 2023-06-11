@@ -32,17 +32,18 @@ def apply_generator(input, generator, config: TranslateImageConfig):
     input into the generator. The output for these patches is then aggregated via averaging to construct the output for
     the entire input.
     """
+    device = torch.device('cuda:0') if config.use_gpu else torch.device('cpu')
+
     patch_size = np.array(config.patch_size)
     stride = np.array(config.stride)
     out_shape = (config.generator_config.output_nc,) + input.shape[-3:]
     batch_size = config.batch_size
     assert (input.shape[-3:] >= patch_size).all(), 'Input must be at least as big as one patch'
 
-    input_batch = torch.empty((batch_size, input.shape[0]) + tuple(patch_size))
-    if config.use_gpu:
-        input_batch = input_batch.to(torch.device('cuda:0'))
+    input_batch = torch.empty((batch_size, input.shape[0]) + tuple(patch_size), device=device)
 
-    outputs = np.full((1,) + out_shape, np.nan)
+    n_output_layers = int(np.ceil(patch_size / stride).prod())
+    outputs = torch.full((n_output_layers,) + out_shape, np.nan, device=device)
     patch_locations = compute_patch_locations(input.shape, patch_size, stride)
 
     i = 0
@@ -51,15 +52,9 @@ def apply_generator(input, generator, config: TranslateImageConfig):
     def insert_gen_output(output):
         nonlocal outputs
         for out, s in zip(output, slices):
-            free_channels = np.all(np.isnan(outputs[(slice(None),) + s]), axis=(1, 2, 3, 4))
-            free_channels = np.nonzero(free_channels)[0]
-
-            if len(free_channels) == 0:
-                new_channel = np.full((1,) + out_shape, np.nan)
-                outputs = np.append(outputs, new_channel, axis=0)
-                outputs[-1][s] = out
-            else:
-                outputs[free_channels[0]][s] = out
+            free_channels = torch.all(torch.isnan(outputs[(slice(None),) + s]).view(n_output_layers, -1), dim=1)
+            free_channels = torch.nonzero(free_channels, as_tuple=True)[0]
+            outputs[free_channels[0]][s] = out
 
     for z, y, x in patch_locations:
         cords = (z, y, x)
@@ -78,17 +73,15 @@ def apply_generator(input, generator, config: TranslateImageConfig):
         i = 0
 
         gen_output = generator(input_batch)
-        gen_output = gen_output.detach().cpu().numpy()
         insert_gen_output(gen_output)
     else:
         if i > 0:
             gen_output = generator(input_batch[:i])
-            gen_output = gen_output.detach().cpu().numpy()
             insert_gen_output(gen_output)
 
-    outputs = np.nanmean(outputs, axis=0)
-    assert not np.all(np.isnan(outputs)), 'There should be no NaN value left in outputs'
-    return outputs
+    outputs = torch.nanmean(outputs, axis=0)
+    assert not torch.any(torch.isnan(outputs)), 'There should be no NaN value left in outputs'
+    return outputs.detach().cpu().numpy()
 
 
 def translate_image(config: TranslateImageConfig):
