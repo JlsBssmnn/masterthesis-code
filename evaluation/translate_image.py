@@ -11,77 +11,117 @@ from image_synthesis.logging_config import logging
 
 from .evaluation_utils import get_path, save_images
 
-def compute_patch_locations(input_shape, patch_size, stride):
-    patches_per_axis = (input_shape[-3:] - patch_size) / stride
-    covers_axis = patches_per_axis % 1 == 0
-    patches_per_axis = np.floor(patches_per_axis).astype(int) + 1
+class GeneratorApplier:
+    def __init__(self, input_shape, config: TranslateImageConfig):
+        self.config = config
+        self.device = torch.device('cuda:0') if config.use_gpu else torch.device('cpu')
+        self.patch_locations, self.patches_per_axis = self.compute_patch_locations(input_shape, config.patch_size)
 
-    patch_locations = [list(range(0, patches_per_axis[i]*stride[i], stride[i])) for i in range(3)]
-    patch_locations = [patch_locations[i] if covers
-                       else patch_locations[i] + [input_shape[i - 3] - patch_size[i]]
-                       for i, covers in enumerate(covers_axis)]
+    def compute_patch_locations(self, input_shape, patch_size):
+        patch_size = np.array(patch_size)
+        assert (patch_size % 2 == 0).all(), "patch size must be multiple of 2 in each dimension"
+        patch_locations_per_layer = []
+        patches_per_axis = np.empty((4, 3), dtype=int)
 
-    z, y, x = np.meshgrid(*patch_locations, indexing='ij')
-    z, y, x = z.flatten(), y.flatten(), x.flatten()
-    return np.stack((z, y, x), 0).T
+        for i in range(4):
+            shape = np.array(input_shape[-3:])
+            if i > 0:
+                shape[i - 1] -= patch_size[i - 1] / 2
 
-@torch.no_grad()
-def apply_generator(input, generator, config: TranslateImageConfig):
-    """
-    This function applies the provided generator to the provided input. This is done by feeding small patches of the
-    input into the generator. The output for these patches is then aggregated via averaging to construct the output for
-    the entire input.
-    """
-    device = torch.device('cuda:0') if config.use_gpu else torch.device('cpu')
+            patches_per_axis_i = shape / patch_size
+            covers_axis = patches_per_axis_i % 1 == 0
+            patches_per_axis_i = np.floor(patches_per_axis_i).astype(int)
+            patches_per_axis[i] = patches_per_axis_i
 
-    patch_size = np.array(config.patch_size)
-    stride = np.array(config.stride)
-    out_shape = (config.generator_config.output_nc,) + input.shape[-3:]
-    batch_size = config.batch_size
-    assert (input.shape[-3:] >= patch_size).all(), 'Input must be at least as big as one patch'
+            start_locations = [0, 0, 0]
+            end_locations = patches_per_axis_i * patch_size
+            if i > 0:
+                start_locations[i - 1] = int(patch_size[i - 1] / 2)
+                end_locations[i - 1] += patch_size[i - 1] / 2
+            patch_locations = [list(range(start_locations[i], end_locations[i], patch_size[i])) for i in range(3)]
 
-    input_batch = torch.empty((batch_size, input.shape[0]) + tuple(patch_size), device=device)
+            if i == 0:
+                patch_locations = [patch_locations[i] if covers
+                                   else patch_locations[i] + [input_shape[i - 3] - patch_size[i]]
+                                   for i, covers in enumerate(covers_axis)]
 
-    n_output_layers = int(np.ceil(patch_size / stride).prod())
-    outputs = torch.full((n_output_layers,) + out_shape, np.nan, device=device)
-    patch_locations = compute_patch_locations(input.shape, patch_size, stride)
+            z, y, x = np.meshgrid(*patch_locations, indexing='ij')
+            z, y, x = z.flatten(), y.flatten(), x.flatten()
+            patch_locations_per_layer.append(np.stack((z, y, x), 0).T)
+        return patch_locations_per_layer, patches_per_axis
 
-    i = 0
-    slices = np.empty(batch_size, dtype=object)
+    @torch.no_grad()
+    def apply_generator(self, input, generator):
+        """
+        This function applies the provided generator to the provided input. This is done by feeding small patches of the
+        input into the generator. The output for these patches is then aggregated via averaging to construct the output for
+        the entire input.
 
-    def insert_gen_output(output):
-        nonlocal outputs
-        for out, s in zip(output, slices):
-            free_channels = torch.all(torch.isnan(outputs[(slice(None),) + s]).view(n_output_layers, -1), dim=1)
-            free_channels = torch.nonzero(free_channels, as_tuple=True)[0]
-            outputs[free_channels[0]][s] = out
+        When using the gpu and a large image, it is highly advised to use pytorch gpu tensor for input. This will avoid
+        a lot of cpu() calls and thus will be faster.
+        """
+        patch_size = np.array(self.config.patch_size)
+        c = self.config.generator_config.output_nc
+        out_shape = (c,) + input.shape[-3:]
+        batch_size = self.config.batch_size
+        assert (input.shape[-3:] >= patch_size).all(), 'Input must be at least as big as one patch'
 
-    for z, y, x in patch_locations:
-        cords = (z, y, x)
-        s = tuple([slice(c, c + patch_size[i]) for i, c in enumerate(cords)])
-        s = (slice(None),) + s
-        gen_input = input[s]
+        input_batch = torch.empty((batch_size, input.shape[0]) + tuple(patch_size), device=self.device)
 
-        input_batch[i] = gen_input
-        slices[i] = s
+        n_output_layers = 4
+        outputs = torch.full((n_output_layers,) + out_shape, np.nan, device=self.device)
+        slices = np.empty(batch_size, dtype=object)
 
-        i += 1
+        for i in range(4):
+            output_stack = torch.empty((len(self.patch_locations[i]), c, *patch_size), device=self.device)
+            stack_pointer = 0
+            size_of_current_batch = 0
+            for z, y, x in self.patch_locations[i]:
+                cords = (z, y, x)
+                s = tuple([slice(c, c + patch_size[j]) for j, c in enumerate(cords)])
+                s = (slice(None),) + s
+                gen_input = input[s]
 
-        if i < batch_size:
-            continue
+                input_batch[size_of_current_batch] = gen_input
+                slices[size_of_current_batch] = s
 
-        i = 0
+                size_of_current_batch += 1
 
-        gen_output = generator(input_batch)
-        insert_gen_output(gen_output)
-    else:
-        if i > 0:
-            gen_output = generator(input_batch[:i])
-            insert_gen_output(gen_output)
+                if size_of_current_batch < batch_size:
+                    continue
 
-    outputs = torch.nanmean(outputs, axis=0)
-    assert not torch.any(torch.isnan(outputs)), 'There should be no NaN value left in outputs'
-    return outputs.detach().cpu().numpy()
+                gen_output = generator(input_batch)
+                output_stack[stack_pointer:stack_pointer + size_of_current_batch] = gen_output
+
+                stack_pointer = size_of_current_batch
+                size_of_current_batch = 0
+            else:
+                if size_of_current_batch > 0:
+                    gen_output = generator(input_batch[:size_of_current_batch])
+                    output_stack[stack_pointer:stack_pointer + size_of_current_batch] = gen_output
+
+            # The following lines are equivalent to this numpy code (thanks pytorch ;^):
+            #     net_outputs = net_outputs.reshape(*self.patches_per_axis[i], c, *patch_size)
+            #     net_outputs = np.transpose(net_outputs, (0, 4, 3, 1, 5, 2, 6))
+            #                     .reshape(c, *(self.patches_per_axis[i] * patch_size))
+            output_stack = output_stack.reshape((*self.patches_per_axis[i], c, *patch_size))
+            output_stack = torch.transpose(output_stack, 1, 3) # 0, 3, 2, 1, 4, 5, 6
+            output_stack = torch.transpose(output_stack, 1, 2) # 0, 2, 3, 1, 4, 5, 6
+            output_stack = torch.transpose(output_stack, 1, 5) # 0, 5, 3, 1, 4, 2, 6
+            output_stack = torch.transpose(output_stack, 1, 4) # 0, 4, 3, 1, 5, 2, 6
+            output_stack = output_stack.reshape(c, *(self.patches_per_axis[i] * patch_size))
+
+            index = [slice(None) for _ in range(4)]
+            if i > 0:
+                start = int(patch_size[i-1] / 2)
+                index[i] = slice(start, start + self.patches_per_axis[i][i - 1] * patch_size[i - 1])
+            outputs[i][tuple(index)] = output_stack
+
+        outputs = torch.nanmean(outputs, axis=0)
+
+        # The following assertion should hold. It's commented out, because of performance reasons.
+        # assert not torch.any(torch.isnan(outputs)), 'There should be no NaN value left in outputs'
+        return outputs.detach().cpu().numpy()
 
 
 def translate_image(config: TranslateImageConfig):
@@ -109,8 +149,11 @@ def translate_image(config: TranslateImageConfig):
     for image in images:
         image = (image / 127.5) - 1
         image = torch.tensor(image)
+        if config.use_gpu:
+            image = image.to(0)
 
-        output = apply_generator(image, generator, config)
+        applier = GeneratorApplier(image.shape, config)
+        output = applier.apply_generator(image, generator)
         output = ((output + 1) / 2) # normalize to range(0, 1)
         outputs.append(output)
     return outputs
