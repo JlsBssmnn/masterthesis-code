@@ -102,13 +102,13 @@ class GeneratorApplier:
 
             # The following lines are equivalent to this numpy code (thanks pytorch ;^):
             #     net_outputs = net_outputs.reshape(*self.patches_per_axis[i], c, *patch_size)
-            #     net_outputs = np.transpose(net_outputs, (0, 4, 3, 1, 5, 2, 6))
+            #     net_outputs = np.transpose(net_outputs, (3, 0, 4, 1, 5, 2, 6))
             #                     .reshape(c, *(self.patches_per_axis[i] * patch_size))
             output_stack = output_stack.reshape((*self.patches_per_axis[i], c, *patch_size))
-            output_stack = torch.transpose(output_stack, 1, 3) # 0, 3, 2, 1, 4, 5, 6
-            output_stack = torch.transpose(output_stack, 1, 2) # 0, 2, 3, 1, 4, 5, 6
-            output_stack = torch.transpose(output_stack, 1, 5) # 0, 5, 3, 1, 4, 2, 6
-            output_stack = torch.transpose(output_stack, 1, 4) # 0, 4, 3, 1, 5, 2, 6
+            output_stack = torch.transpose(output_stack, 0, 3) # 3, 1, 2, 0, 4, 5, 6
+            output_stack = torch.transpose(output_stack, 1, 3) # 3, 0, 2, 1, 4, 5, 6
+            output_stack = torch.transpose(output_stack, 2, 5) # 3, 0, 5, 1, 4, 2, 6
+            output_stack = torch.transpose(output_stack, 2, 4) # 3, 0, 4, 1, 5, 2, 6
             output_stack = output_stack.reshape(c, *(self.patches_per_axis[i] * patch_size))
 
             index = [slice(None) for _ in range(4)]
