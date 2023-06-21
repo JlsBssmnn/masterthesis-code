@@ -7,13 +7,15 @@ class TranslateImageConfig:
     input_dataset: str               # The dataset which contains the input image
     input_file: str                  # The file that contains the input image
     patch_size: tuple[int, int, int] # The input size for the generator
+    scale_with_patch_max: bool       # If true, the network input is computed like this: (patch / patch.max() - 0.5) * 2
     slices: list[str] | None         # Python slice strings. If provided only these parts of the input are fed to the generator.
-    stride: tuple[int, int, int]     # The stride for moving the through the input image
     use_gpu: bool                    # Whether to do the inference on the gpu
 
     # these properties are only used in the one_step function
     output_datasets: list[str] | None # The dataset names of the output images
     output_file: str | None           # Path to the output file (where result is written to)
+    save_images: bool                 # If true, the resulting images are saved
+    show_images: bool                 # If true, the results are shown in neuroglancer
 
 class SegmentationConfig:
     basins_range: tuple[float, float, float]     # start, stop and step values for searching for basin threshold parameters

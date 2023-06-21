@@ -4,12 +4,15 @@ from evaluation.config.template import TranslateImageConfig
 from image_synthesis.logging_config import logging
 import h5py
 import numpy as np
+import neuroglancer
+import webbrowser
 
 from cycleGAN.models.networks_3d import define_G
 from cycleGAN.util.my_utils import object_to_dict
 from image_synthesis.logging_config import logging
 
 from .evaluation_utils import get_path, save_images
+from utils.neuroglancer_viewer.neuroglancer_viewer import show_image
 
 class GeneratorApplier:
     def __init__(self, input_shape, config: TranslateImageConfig):
@@ -80,7 +83,10 @@ class GeneratorApplier:
                 cords = (z, y, x)
                 s = tuple([slice(c, c + patch_size[j]) for j, c in enumerate(cords)])
                 s = (slice(None),) + s
-                gen_input = input[s]
+                if self.config.scale_with_patch_max:
+                    gen_input = (input[s] / input[s].max() - 0.5) * 2
+                else:
+                    gen_input = input[s]
 
                 input_batch[size_of_current_batch] = gen_input
                 slices[size_of_current_batch] = s
@@ -147,8 +153,14 @@ def translate_image(config: TranslateImageConfig):
     outputs = []
 
     for image in images:
-        image = (image / 127.5) - 1
-        image = torch.tensor(image)
+        if not config.scale_with_patch_max:
+            if image.dtype == np.uint8:
+                image = (image / 127.5) - 1
+            elif image.dtype == np.uint16:
+                image = ((image / image.max()) - 0.5) * 2
+            else:
+                raise NotImplementedError(f"The datatype {image.dtype} is not implemented")
+        image = torch.tensor(image.astype(np.float32), dtype=torch.float32)
         if config.use_gpu:
             image = image.to(0)
 
@@ -169,4 +181,13 @@ def one_step(config: TranslateImageConfig):
             (config.slices is not None and len(config.slices) == len(config.output_datasets))
 
     outputs = translate_image(config)
-    save_images(config.output_file, outputs, config.output_datasets)
+
+    if config.save_images:
+        save_images(config.output_file, outputs, config.output_datasets)
+
+    if config.show_images:
+        viewer = neuroglancer.Viewer()
+        for name, image in zip(config.output_datasets, outputs):
+            show_image(viewer, image, name=name)
+        webbrowser.open(str(viewer), new=0, autoraise=True)
+        input("Done?")
