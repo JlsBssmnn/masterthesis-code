@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 class TranslateImageConfig:
     batch_size: int                  # How many input patches are fed into the generator at once
@@ -17,7 +17,7 @@ class TranslateImageConfig:
     save_images: bool                 # If true, the resulting images are saved
     show_images: bool                 # If true, the results are shown in neuroglancer
 
-class SegmentationConfig:
+class EpithelialSegmentationConfig:
     basins_range: tuple[float, float, float]     # start, stop and step values for searching for basin threshold parameters
     error_factor: float                          # The factor that is used to combine global and local error
     ground_truth_datasets: list[tuple[str, str]] # The datasets in the ground truth file that contain the images. The first dataset is
@@ -40,8 +40,32 @@ class SegmentationConfig:
     input_file: str | None            # The file for loading the images
     input_datasets: list[str] | None  # The datasets in the input file which shall be used
 
+class BrainbowSegmentationConfig:
+    bg_measure: str                                    # Which function to use to convert color values to background probabilities
+    bg_threshold: float                                # The maximum value that identifies a background voxel
+    bg_vi_weight: float                                # In [0, 1]; The ratio of the sum of background weights to the sum of all weights (for VI)
+    bias_cut_range: tuple[float, float, float]         # The range of bias cuts that are searched
+    dist_measure: str                                  # Which distance measure to use for convertin a color image to affinites
+    ground_truth_dataset: str                          # The dataset that contains the ground truth
+    ground_truth_file: str                             # The file containing the ground truth
+    ground_truth_slices: list[str]                     # Slices in the ground truth image that shall be used
+    image_names: list[str]                             # Names of images. This will be used to store evaluation metrics for the images
+    image_type: Literal['color'] | Literal['affinity'] # Whether the image contains color values or affinity values
+    offsets: list[tuple[int, int, int]]                # The offsets that are used in the mutex watershed algorithm
+    save_directory: str                                # The directory where to save the results
+    save_file_name: str                                # The name of the saved file
+    save_results: bool                                 # If true, save results to a file, else just print results
+    seperating_channel: int                            # Parameter for the mutex watershed algorithm
+    show_progress: bool                                # If true, a progress bar will indicate the progress
+    show_segmentation: bool                            # If true, the segmentation images will be shown
+    slice_str: str                                     # A python slice specifying which part of the generator output is used for segmentation
+
+    # these properties are only used in the one_step function
+    input_file: str | None            # The file for loading the images
+    input_datasets: list[str] | None  # The datasets in the input file which shall be used
+
 class Config:
     translate_image_config: TranslateImageConfig
-    segmentation_config: SegmentationConfig
+    segmentation_config: EpithelialSegmentationConfig | BrainbowSegmentationConfig
 
 config = TranslateImageConfig()

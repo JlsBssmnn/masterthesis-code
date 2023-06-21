@@ -8,7 +8,7 @@ from skimage.segmentation import watershed
 import skimage
 from pathlib import Path
 import numpy as np
-from evaluation.config.template import SegmentationConfig
+from evaluation.config.template import EpithelialSegmentationConfig
 from evaluation.evaluation_utils import NpEncoder, get_path
 from utils.neuroglancer_viewer.neuroglancer_viewer import show_image
 
@@ -29,8 +29,8 @@ class Evaluation:
         d["variation_of_information"] = self.variation_of_information
         d["acc"] = self.acc
 
-class Evaluater:
-    def __init__(self, config: SegmentationConfig, use_get_path=True):
+class SEEpithelial:
+    def __init__(self, config: EpithelialSegmentationConfig, use_get_path=True):
         self.config = config
         self.membrane_black = self.config.membrane_black
 
@@ -151,7 +151,6 @@ class Evaluater:
             tweak_image_result["diff"] = diff
 
             if best_score == float('inf'):
-                evaluation.write_to_dict(tweak_image_result)
                 self.results["evaluation"].append(result) 
                 continue
 
@@ -223,11 +222,11 @@ class Evaluater:
         cell_diff = image[self.ground_truth_masks[i][1]] - self.membrane_black
         return (np.append(cell_diff, membrane_diff) ** 2).mean()
 
-def find_segmentation_and_eval(images, config: SegmentationConfig):
+def find_segmentation_and_eval(images, config: EpithelialSegmentationConfig):
     evaluater = Evaluater(config)
     return evaluater.eval_and_store(images)
 
-def one_step(config: SegmentationConfig):
+def one_step(config: EpithelialSegmentationConfig):
     """
     Can be used to start segmentation from an image file. The result is saved to an output file.
     """
