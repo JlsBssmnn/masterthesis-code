@@ -32,7 +32,7 @@ def image_viewer(opt):
         for group in groups:
             for image_type in image_types:
                 dataset = f[group][image_type]
-                epoch = re.search('epoch_(\d*)_iter', group).groups()[0]
+                epoch = re.search(r'epoch_(\d*)_iter', group).groups()[0]
 
                 images.append(np.asarray(dataset))
                 names.append(epoch + '_' + image_type)
