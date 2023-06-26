@@ -223,7 +223,7 @@ class SEEpithelial:
         return (np.append(cell_diff, membrane_diff) ** 2).mean()
 
 def find_segmentation_and_eval(images, config: EpithelialSegmentationConfig):
-    evaluater = Evaluater(config)
+    evaluater = SEEpithelial(config)
     return evaluater.eval_and_store(images)
 
 def one_step(config: EpithelialSegmentationConfig):
