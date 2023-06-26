@@ -56,6 +56,9 @@ class SEEpithelial:
                 "membrane_range": self.config.membrane_range,
                 "membrane_black": self.config.membrane_black,
                 "error_factor": self.config.error_factor,
+                "local_error_measure": self.config.local_error_measure, 
+                "local_error_a": self.config.local_error_a, 
+                "local_error_b": self.config.local_error_b, 
             },
             "evaluation": []
         }
