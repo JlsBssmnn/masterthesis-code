@@ -12,7 +12,7 @@ import neuroglancer
 from utils.neuroglancer_viewer.neuroglancer_viewer import show_image
 import webbrowser
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from partition_comparison import WeightedSingletonVariationOfInformation as WeightedSingletonVI
+from partition_comparison import WeightedSingletonVariationOfInformation as WeightedSingletonVI, VariationOfInformation
 
 # Function was copied from here: https://github.com/markschoene/MeLeCoLe/blob/main/melecole/infer.py#L181
 def run_mws(affinities,
@@ -103,7 +103,7 @@ class Evaluation:
     def __init__(self, vi, segmentation):
         self.under_segmentation = vi.valueFalseJoin()
         self.over_segmentation = vi.valueFalseCut()
-        self.variation_of_information = vi.value()
+        self.weighted_VI = vi.value()
         self.segmentation = segmentation
 
     @classmethod
@@ -111,7 +111,7 @@ class Evaluation:
         obj = cls.__new__(cls)
         obj.under_segmentation = under_segmentation
         obj.over_segmentation = over_segmentation
-        obj.variation_of_information = under_segmentation + over_segmentation
+        obj.weighted_VI = under_segmentation + over_segmentation
         obj.segmentation = segmentation
 
         return obj
@@ -120,9 +120,9 @@ class Evaluation:
         """
         Stores the evaluation to the given dict `d`.
         """
-        d["under_segmentation"] = self.under_segmentation
-        d["over_segmentation"] = self.over_segmentation
-        d["variation_of_information"] = self.variation_of_information
+        d["weighted_under_seg"] = self.under_segmentation
+        d["weighted_over_seg"] = self.over_segmentation
+        d["weighted_VI"] = self.weighted_VI
 
 class SEBrainbow:
     """
@@ -227,7 +227,7 @@ class SEBrainbow:
             tweak_image_result = result["evaluation_scores"][image_name]
 
             self.compute_foreground_metrics(image, i, tweak_image_result)
-            self.compute_affinity_diff(image, i, tweak_image_result)
+            self.compute_affinity_metrics(image, i, tweak_image_result)
 
             if not compute_VI:
                 self.results["evaluation"].append(result) 
@@ -240,10 +240,10 @@ class SEBrainbow:
             for bias_cut in np.arange(*self.config.bias_cut_range):
                 if bias_cut in used_bias_cuts:
                     evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
-                    evaluation = Evaluation.create(evaluation['under_segmentation'], evaluation['over_segmentation'], cached_seg)
+                    evaluation = Evaluation.create(evaluation['weighted_under_seg'], evaluation['weighted_over_seg'], cached_seg)
 
-                    if evaluation.variation_of_information < best_score:
-                        best_score = evaluation.variation_of_information
+                    if evaluation.weighted_VI < best_score:
+                        best_score = evaluation.weighted_VI
                         evaluation.write_to_dict(tweak_image_result)
                         seg_params["bias_cut"] = bias_cut
                         segmentations[image_name] = cached_seg
@@ -251,8 +251,8 @@ class SEBrainbow:
                     continue
                 evaluation = self.eval_image(affinities, foreground_mask, bias_cut, i)
 
-                if evaluation.variation_of_information < best_score:
-                    best_score = evaluation.variation_of_information
+                if evaluation.weighted_VI < best_score:
+                    best_score = evaluation.weighted_VI
                     evaluation.write_to_dict(tweak_image_result)
                     seg_params["bias_cut"] = bias_cut
                     segmentations[image_name] = evaluation.segmentation
@@ -263,6 +263,8 @@ class SEBrainbow:
                 self.results["evaluation"].append(result) 
                 continue
 
+            self.compute_vi(evaluation, i, tweak_image_result)
+            
             bias_cut = seg_params['bias_cut']
             for j in range(len(images)):
                 if i == j:
@@ -277,10 +279,11 @@ class SEBrainbow:
                 else:
                     evaluation = self.eval_image(images[j][1:], foreground_masks[j], bias_cut, j)
                 evaluation.write_to_dict(other_image_result)
+                self.compute_vi(evaluation, j, other_image_result)
 
-                computed_VIs = [x['evaluation_scores'][image_name]['variation_of_information']
+                computed_VIs = [x['evaluation_scores'][image_name]['weighted_VI']
                                 for x in self.results['evaluation']]
-                if image_name not in segmentations or evaluation.variation_of_information <= min(computed_VIs):
+                if image_name not in segmentations or evaluation.weighted_VI <= min(computed_VIs):
                     segmentations[image_name] = evaluation.segmentation
 
             used_bias_cuts[bias_cut] = i
@@ -310,6 +313,12 @@ class SEBrainbow:
         vi = WeightedSingletonVI(self.ground_truths[i], seg, self.vi_weights[i])
         return Evaluation(vi, seg)
 
+    def compute_vi(self, evaluation, i, result_dict):
+        vi = VariationOfInformation(self.ground_truths[i], evaluation.segmentation)
+        result_dict['variation_of_information'] = vi.value()
+        result_dict['under_segmentation'] = vi.valueFalseJoin()
+        result_dict['over_segmentation'] = vi.valueFalseCut()
+
     def compute_foreground_metrics(self, image, i, result_dict):
         y_pred = (image[0] > self.config.bg_threshold).ravel()
         y_true = (self.ground_truths[i] != 0).ravel()
@@ -324,12 +333,23 @@ class SEBrainbow:
         result_dict['foreground_acc'] = acc
         result_dict['foreground_diff'] = diff
 
-    def compute_affinity_diff(self, image, i, result_dict):
+    def compute_affinity_metrics(self, image, i, result_dict):
         pred_affinities = image[1:][self.ground_truth_foregrounds[i]]
         true_affinities = self.ground_truth_affinites[i][1:][self.ground_truth_foregrounds[i]]
 
         diff = ((pred_affinities - true_affinities) ** 2).mean()
         result_dict['affinity_diff'] = diff
+
+        for i in range(0, pred_affinities.shape[0]):
+            diff = ((pred_affinities[i] - true_affinities[i]) ** 2).mean()
+            result_dict[f'affinity_diff_{i}'] = diff
+
+        pred_attractive_aff = pred_affinities >= 0.5
+        true_attractive_aff = true_affinities >= 0.5
+        prec, rec, f1, _ = precision_recall_fscore_support(true_attractive_aff, pred_attractive_aff, pos_label=1, average='binary')
+        result_dict['affinity_prec'] = prec
+        result_dict['affinity_rec'] = rec
+        result_dict['affinity_f1'] = f1
 
     def eval_and_store(self, images):
         segmentations = self.find_segmentation_and_eval(images, True)
