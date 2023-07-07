@@ -340,9 +340,10 @@ class SEBrainbow:
         diff = ((pred_affinities - true_affinities) ** 2).mean()
         result_dict['affinity_diff'] = diff
 
-        for i in range(0, pred_affinities.shape[0]):
-            diff = ((pred_affinities[i] - true_affinities[i]) ** 2).mean()
-            result_dict[f'affinity_diff_{i}'] = diff
+        for j in range(1, image.shape[0]):
+            mask = self.ground_truth_foregrounds[i][j-1]
+            diff = ((image[j][mask] - self.ground_truth_affinites[i][j][mask]) ** 2).mean()
+            result_dict[f'affinity_diff_{j}'] = diff
 
         pred_attractive_aff = pred_affinities >= 0.5
         true_attractive_aff = true_affinities >= 0.5
