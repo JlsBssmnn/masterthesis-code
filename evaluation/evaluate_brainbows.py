@@ -101,18 +101,26 @@ def segmentation_to_affinities(image, offsets, bg_value=0):
     return affinities
 
 class Evaluation:
-    def __init__(self, vi, segmentation):
+    def __init__(self, weighted_vi, vi, segmentation):
         self.under_segmentation = vi.valueFalseJoin()
         self.over_segmentation = vi.valueFalseCut()
-        self.weighted_VI = vi.value()
+        self.vi = vi.value()
+
+        self.w_under_segmentation = weighted_vi.valueFalseJoin()
+        self.w_over_segmentation = weighted_vi.valueFalseCut()
+        self.w_vi = weighted_vi.value()
+
         self.segmentation = segmentation
 
     @classmethod
-    def create(cls, under_segmentation, over_segmentation, segmentation):
+    def create(cls, under_segmentation, over_segmentation, w_under_segmentation, w_over_segmentation, segmentation):
         obj = cls.__new__(cls)
         obj.under_segmentation = under_segmentation
         obj.over_segmentation = over_segmentation
-        obj.weighted_VI = under_segmentation + over_segmentation
+        obj.vi = under_segmentation + over_segmentation
+        obj.w_under_segmentation = w_under_segmentation
+        obj.w_over_segmentation = w_over_segmentation
+        obj.w_vi = w_under_segmentation + w_over_segmentation
         obj.segmentation = segmentation
 
         return obj
@@ -121,9 +129,12 @@ class Evaluation:
         """
         Stores the evaluation to the given dict `d`.
         """
-        d["weighted_under_seg"] = self.under_segmentation
-        d["weighted_over_seg"] = self.over_segmentation
-        d["weighted_VI"] = self.weighted_VI
+        d["under_seg"] = self.under_segmentation
+        d["over_seg"] = self.over_segmentation
+        d["VI"] = self.vi
+        d["weighted_under_seg"] = self.w_under_segmentation
+        d["weighted_over_seg"] = self.w_over_segmentation
+        d["weighted_VI"] = self.w_vi
 
 def create_param_list(*param_values):
     values = []
@@ -258,13 +269,14 @@ class SEBrainbow:
                 for bias_cut in self.bias_cut_values:
                     if bias_cut in used_bias_cuts:
                         evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
-                        evaluation = Evaluation.create(evaluation['weighted_under_seg'], evaluation['weighted_over_seg'], cached_seg)
+                        evaluation = Evaluation.create(evaluation['under_seg'], evaluation['over_seg'],
+                                                       evaluation['weighted_under_seg'], evaluation['weighted_over_seg'], cached_seg)
                         vis = {}
                         evaluation.write_to_dict(vis)
                         tweak_image_result["searched_VIs"].append(vis)
 
-                        if evaluation.weighted_VI < best_score:
-                            best_score = evaluation.weighted_VI
+                        if evaluation.w_vi < best_score:
+                            best_score = evaluation.w_vi
                             evaluation.write_to_dict(tweak_image_result)
                             seg_params["bias_cut"] = bias_cut
                             segmentations[image_name] = cached_seg
@@ -275,8 +287,8 @@ class SEBrainbow:
                     evaluation.write_to_dict(vis)
                     tweak_image_result["searched_VIs"].append(vis)
 
-                    if evaluation.weighted_VI < best_score:
-                        best_score = evaluation.weighted_VI
+                    if evaluation.w_vi < best_score:
+                        best_score = evaluation.w_vi
                         evaluation.write_to_dict(tweak_image_result)
                         seg_params["bias_cut"] = bias_cut
                         segmentations[image_name] = evaluation.segmentation
@@ -286,8 +298,6 @@ class SEBrainbow:
                 if best_score == float('inf'):
                     self.results["evaluation"].append(result) 
                     continue
-
-                self.compute_vi(evaluation, i, tweak_image_result)
 
                 bias_cut = seg_params['bias_cut']
                 for j in range(len(images)):
@@ -299,15 +309,15 @@ class SEBrainbow:
 
                     if bias_cut in used_bias_cuts:
                         evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
-                        evaluation = Evaluation.create(evaluation['under_segmentation'], evaluation['over_segmentation'], cached_seg)
+                        evaluation = Evaluation.create(evaluation['under_seg'], evaluation['over_seg'],
+                                                       evaluation['w_under_seg'], evaluation['w_over_seg'], cached_seg)
                     else:
                         evaluation = self.eval_image(images[j][1:], foreground_masks[j], bias_cut, j)
                     evaluation.write_to_dict(other_image_result)
-                    self.compute_vi(evaluation, j, other_image_result)
 
                     computed_VIs = [x['evaluation_scores'][image_name]['weighted_VI']
                                     for x in self.results['evaluation']]
-                    if image_name not in segmentations or evaluation.weighted_VI <= min(computed_VIs):
+                    if image_name not in segmentations or evaluation.w_vi <= min(computed_VIs):
                         segmentations[image_name] = evaluation.segmentation
 
                 used_bias_cuts[bias_cut] = i
@@ -333,15 +343,12 @@ class SEBrainbow:
         elif seg.max() <= 4_294_967_295:
             seg = seg.astype(np.uint32)
 
-        # compute VI
-        vi = WeightedSingletonVI(self.ground_truths[i], seg, self.vi_weights[i])
-        return Evaluation(vi, seg)
+        return self.compute_vi(seg, i)
 
-    def compute_vi(self, evaluation, i, result_dict):
-        vi = VariationOfInformation(self.ground_truths[i], evaluation.segmentation)
-        result_dict['variation_of_information'] = vi.value()
-        result_dict['under_segmentation'] = vi.valueFalseJoin()
-        result_dict['over_segmentation'] = vi.valueFalseCut()
+    def compute_vi(self, segmentation, i):
+        weighted_vi = WeightedSingletonVI(self.ground_truths[i], segmentation, self.vi_weights[i])
+        vi = VariationOfInformation(self.ground_truths[i], segmentation)
+        return Evaluation(weighted_vi, vi, segmentation)
 
     def compute_foreground_metrics(self, image, i, result_dict, bg_threshold):
         y_pred = (image[0] > bg_threshold).ravel()
