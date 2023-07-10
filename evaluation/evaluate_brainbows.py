@@ -1,4 +1,5 @@
 import json
+from itertools import product
 from tqdm import tqdm
 from pathlib import Path
 from cycleGAN.data.dynamic_dataset_creation import create_brainbow_affinities
@@ -124,6 +125,20 @@ class Evaluation:
         d["weighted_over_seg"] = self.over_segmentation
         d["weighted_VI"] = self.weighted_VI
 
+def create_param_list(*param_values):
+    values = []
+    rounding_decimals = 10
+
+    for param in param_values:
+        if type(param) == tuple and len(param) == 3:
+            values.append(np.arange(*param).round(rounding_decimals).tolist())
+        elif type(param) == list:
+            values.append(param)
+        else:
+            values.append([param])
+
+    return list(product(*values))
+
 class SEBrainbow:
     """
     A class that Segments brainbow images and Evaluates them.
@@ -132,7 +147,9 @@ class SEBrainbow:
         self.config = config
         self.config.offsets = np.array(self.config.offsets)
         self.color_image = config.image_type == 'color'
-        self.bias_cut_values = np.arange(*self.config.bias_cut_range)
+
+        self.affinity_params = create_param_list(self.config.bg_measure, self.config.dist_measure, self.config.bg_threshold)
+        self.bias_cut_values = np.arange(*self.config.bias_cut_range).round(10)
 
         self.ground_truths = []
         with h5py.File(config.ground_truth_file) as f:
@@ -150,19 +167,12 @@ class SEBrainbow:
             "config": {
                 "bias_cut_range": self.config.bias_cut_range,
                 "offsets": self.config.offsets,
-                "bg_threshold": self.config.bg_threshold,
                 "image_type": self.config.image_type,
                 "seperating_channel": self.config.seperating_channel,
                 "bg_vi_weight": self.config.bg_vi_weight,
             },
             "evaluation": []
         }
-
-        if self.config.image_type == 'color':
-            self.results['config'] |= {
-                "bg_measure": self.config.bg_measure,
-                "dist_measure": self.config.dist_measure,
-            }
 
     def clear(self):
         self.results["evaluation"] = []
@@ -205,89 +215,103 @@ class SEBrainbow:
         return path / file_name
 
     def find_segmentation_and_eval(self, images, compute_VI=True):
-        images = list(map(lambda x: eval(f'x[{self.config.slice_str}]'), images))
-        if self.color_image:
-            images = [create_brainbow_affinities(image, self.config.offsets, self.config.bg_measure, None, self.config.dist_measure)
-                      for image in images]
-        foreground_masks = [get_foreground_mask(image[1:], image[0], self.config.offsets, self.config.bg_threshold)
-                            for image in images]
-
-        used_bias_cuts = {}
+        prog = tqdm(total=self.bias_cut_values.shape[0] * len(images) * len(self.affinity_params), disable=not self.config.show_progress)
         segmentations = {}
-        prog = tqdm(total=self.bias_cut_values.shape[0] * len(images), disable=not self.config.show_progress)
 
-        for i, image in enumerate(images):
-            image_name = self.config.image_names[i]
-            affinities = image[1:]
-            foreground_mask = foreground_masks[i]
-            result = {
-                "segmentation_parameters": (seg_params := {"tweak_image": image_name}),
-                "evaluation_scores": {k: dict() for k in self.config.image_names}
-            }
-            tweak_image_result = result["evaluation_scores"][image_name]
+        for bg_measure, dist_measure, bg_threshold in self.affinity_params:
+            images = list(map(lambda x: eval(f'x[{self.config.slice_str}]'), images))
+            if self.color_image:
+                images = [create_brainbow_affinities(image, self.config.offsets, bg_measure, None, dist_measure)
+                          for image in images]
+            foreground_masks = [get_foreground_mask(image[1:], image[0], self.config.offsets, bg_threshold)
+                                for image in images]
 
-            self.compute_foreground_metrics(image, i, tweak_image_result)
-            self.compute_affinity_metrics(image, i, tweak_image_result)
+            used_bias_cuts = {}
 
-            if not compute_VI:
-                self.results["evaluation"].append(result) 
-                continue
+            for i, image in enumerate(images):
+                image_name = self.config.image_names[i]
+                affinities = image[1:]
+                foreground_mask = foreground_masks[i]
+                result = {
+                    "segmentation_parameters": (seg_params := {
+                        "tweak_image": image_name,
+                        "bg_threshold": bg_threshold,
+                        "bg_measure": bg_measure,
+                        "dist_measure": dist_measure,
+                        }),
+                    "evaluation_scores": {k: dict() for k in self.config.image_names}
+                }
+                tweak_image_result = result["evaluation_scores"][image_name]
+                tweak_image_result["searched_VIs"] = []
 
-            best_score = float('inf')
-            cached_seg = segmentations[image_name] if image_name in segmentations else None
+                self.compute_foreground_metrics(image, i, tweak_image_result, bg_threshold)
+                self.compute_affinity_metrics(image, i, tweak_image_result)
 
-            # find optimal segmentation
-            for bias_cut in np.arange(*self.config.bias_cut_range):
-                if bias_cut in used_bias_cuts:
-                    evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
-                    evaluation = Evaluation.create(evaluation['weighted_under_seg'], evaluation['weighted_over_seg'], cached_seg)
+                if not compute_VI:
+                    self.results["evaluation"].append(result) 
+                    continue
+
+                best_score = float('inf')
+                cached_seg = segmentations[image_name] if image_name in segmentations else None
+
+                # find optimal segmentation
+                for bias_cut in self.bias_cut_values:
+                    if bias_cut in used_bias_cuts:
+                        evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
+                        evaluation = Evaluation.create(evaluation['weighted_under_seg'], evaluation['weighted_over_seg'], cached_seg)
+                        vis = {}
+                        evaluation.write_to_dict(vis)
+                        tweak_image_result["searched_VIs"].append(vis)
+
+                        if evaluation.weighted_VI < best_score:
+                            best_score = evaluation.weighted_VI
+                            evaluation.write_to_dict(tweak_image_result)
+                            seg_params["bias_cut"] = bias_cut
+                            segmentations[image_name] = cached_seg
+                        prog.update()
+                        continue
+                    evaluation = self.eval_image(affinities, foreground_mask, bias_cut, i)
+                    vis = {}
+                    evaluation.write_to_dict(vis)
+                    tweak_image_result["searched_VIs"].append(vis)
 
                     if evaluation.weighted_VI < best_score:
                         best_score = evaluation.weighted_VI
                         evaluation.write_to_dict(tweak_image_result)
                         seg_params["bias_cut"] = bias_cut
-                        segmentations[image_name] = cached_seg
+                        segmentations[image_name] = evaluation.segmentation
                     prog.update()
+
+
+                if best_score == float('inf'):
+                    self.results["evaluation"].append(result) 
                     continue
-                evaluation = self.eval_image(affinities, foreground_mask, bias_cut, i)
 
-                if evaluation.weighted_VI < best_score:
-                    best_score = evaluation.weighted_VI
-                    evaluation.write_to_dict(tweak_image_result)
-                    seg_params["bias_cut"] = bias_cut
-                    segmentations[image_name] = evaluation.segmentation
-                prog.update()
+                self.compute_vi(evaluation, i, tweak_image_result)
 
+                bias_cut = seg_params['bias_cut']
+                for j in range(len(images)):
+                    if i == j:
+                        continue
 
-            if best_score == float('inf'):
+                    image_name = self.config.image_names[j]
+                    other_image_result = result["evaluation_scores"][image_name]
+
+                    if bias_cut in used_bias_cuts:
+                        evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
+                        evaluation = Evaluation.create(evaluation['under_segmentation'], evaluation['over_segmentation'], cached_seg)
+                    else:
+                        evaluation = self.eval_image(images[j][1:], foreground_masks[j], bias_cut, j)
+                    evaluation.write_to_dict(other_image_result)
+                    self.compute_vi(evaluation, j, other_image_result)
+
+                    computed_VIs = [x['evaluation_scores'][image_name]['weighted_VI']
+                                    for x in self.results['evaluation']]
+                    if image_name not in segmentations or evaluation.weighted_VI <= min(computed_VIs):
+                        segmentations[image_name] = evaluation.segmentation
+
+                used_bias_cuts[bias_cut] = i
                 self.results["evaluation"].append(result) 
-                continue
-
-            self.compute_vi(evaluation, i, tweak_image_result)
-            
-            bias_cut = seg_params['bias_cut']
-            for j in range(len(images)):
-                if i == j:
-                    continue
-
-                image_name = self.config.image_names[j]
-                other_image_result = result["evaluation_scores"][image_name]
-
-                if bias_cut in used_bias_cuts:
-                    evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
-                    evaluation = Evaluation.create(evaluation['under_segmentation'], evaluation['over_segmentation'], cached_seg)
-                else:
-                    evaluation = self.eval_image(images[j][1:], foreground_masks[j], bias_cut, j)
-                evaluation.write_to_dict(other_image_result)
-                self.compute_vi(evaluation, j, other_image_result)
-
-                computed_VIs = [x['evaluation_scores'][image_name]['weighted_VI']
-                                for x in self.results['evaluation']]
-                if image_name not in segmentations or evaluation.weighted_VI <= min(computed_VIs):
-                    segmentations[image_name] = evaluation.segmentation
-
-            used_bias_cuts[bias_cut] = i
-            self.results["evaluation"].append(result) 
 
         prog.close()
         return segmentations
@@ -319,8 +343,8 @@ class SEBrainbow:
         result_dict['under_segmentation'] = vi.valueFalseJoin()
         result_dict['over_segmentation'] = vi.valueFalseCut()
 
-    def compute_foreground_metrics(self, image, i, result_dict):
-        y_pred = (image[0] > self.config.bg_threshold).ravel()
+    def compute_foreground_metrics(self, image, i, result_dict, bg_threshold):
+        y_pred = (image[0] > bg_threshold).ravel()
         y_true = (self.ground_truths[i] != 0).ravel()
 
         prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, pos_label=1, average='binary')
