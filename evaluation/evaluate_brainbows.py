@@ -168,10 +168,24 @@ class SEBrainbow:
             for s in config.ground_truth_slices:
                 self.ground_truths.append(np.asarray(eval(f"h5_dataset[{s}]")))
 
+        self.masks = [slice(None)]*len(self.ground_truths)
+        if config.mask_file is not None:
+            assert config.mask_datasets is not None
+            with h5py.File(config.mask_file) as f:
+                for i, dataset in enumerate(config.mask_datasets):
+                    if dataset is None:
+                        continue
+                    self.masks[i] = np.asarray(f[dataset])
+
         self.ground_truth_affinites = [segmentation_to_affinities(image, self.config.offsets)
                                        for image in self.ground_truths]
-        self.ground_truth_foregrounds = [get_foreground_mask(gt[1:], gt[0], self.config.offsets, 0.5)
-                                         for gt in self.ground_truth_affinites]
+
+        affinity_masks = [get_foreground_mask(self.ground_truth_affinites[0][1:], mask, self.config.offsets, 0.5)
+                          if type(mask) != slice else slice(None)
+                          for mask in self.masks]
+        self.ground_truth_foregrounds = [get_foreground_mask(gt[1:], gt[0], self.config.offsets, 0.5) & affinity_masks[i]
+                                         for i, gt in enumerate(self.ground_truth_affinites)]
+
         self.vi_weights = self.compute_vi_weights()
 
         self.results = {
@@ -190,12 +204,15 @@ class SEBrainbow:
 
     def compute_vi_weights(self):
         weight_list = []
-        for image in self.ground_truths:
-            num_zero = np.count_nonzero(image == 0)
-            num_non_zero = image.size - num_zero
+        for i, image in enumerate(self.ground_truths):
+            num_zero = np.count_nonzero(image[self.masks[i]] == 0)
+            num_non_zero = np.count_nonzero(self.masks[i]) - num_zero
             zero_weight = (num_non_zero * self.config.bg_vi_weight) / (num_zero * (1 - self.config.bg_vi_weight))
             weights = np.ones(image.shape)
             weights[image == 0] = zero_weight
+
+            if type(self.masks[i]) != slice:
+                weights = weights[self.masks[i]]
 
             weight_list.append(weights)
 
@@ -346,17 +363,19 @@ class SEBrainbow:
         return self.compute_vi(seg, i)
 
     def compute_vi(self, segmentation, i):
-        weighted_vi = WeightedSingletonVI(self.ground_truths[i], segmentation, self.vi_weights[i])
-        vi = VariationOfInformation(self.ground_truths[i], segmentation)
+        ground_truth = self.ground_truths[i][self.masks[i]]
+        prediction = segmentation[self.masks[i]]
+        weighted_vi = WeightedSingletonVI(ground_truth, prediction, self.vi_weights[i])
+        vi = VariationOfInformation(ground_truth, prediction)
         return Evaluation(weighted_vi, vi, segmentation)
 
     def compute_foreground_metrics(self, image, i, result_dict, bg_threshold):
-        y_pred = (image[0] > bg_threshold).ravel()
-        y_true = (self.ground_truths[i] != 0).ravel()
+        y_pred = (image[0][self.masks[i]] > bg_threshold).ravel()
+        y_true = (self.ground_truths[i][self.masks[i]] != 0).ravel()
 
         prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, pos_label=1, average='binary')
         acc = accuracy_score(y_true, y_pred)
-        diff = ((image[0] - self.ground_truth_affinites[i][0]) ** 2).mean()
+        diff = ((image[0] - self.ground_truth_affinites[i][0])[self.masks[i]] ** 2).mean()
 
         result_dict['foreground_prec'] = prec
         result_dict['foreground_rec'] = rec

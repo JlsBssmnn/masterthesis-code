@@ -41,16 +41,18 @@ class EpithelialSegmentationConfig:
     input_datasets: list[str] | None  # The datasets in the input file which shall be used
 
 class BrainbowSegmentationConfig:
-    bg_measure: str                                    # Which function to use to convert color values to background probabilities
-    bg_threshold: float                                # The maximum value that identifies a background voxel
+    bg_measure: str | list[str]                        # Which function to use to convert color values to background probabilities
+    bg_threshold: float | list[float]                  # The maximum value that identifies a background voxel
     bg_vi_weight: float                                # In [0, 1]; The ratio of the sum of background weights to the sum of all weights (for VI)
     bias_cut_range: tuple[float, float, float]         # The range of bias cuts that are searched
-    dist_measure: str                                  # Which distance measure to use for convertin a color image to affinites
+    dist_measure: str | list[str]                      # Which distance measure to use for convertin a color image to affinites
     ground_truth_dataset: str                          # The dataset that contains the ground truth
     ground_truth_file: str                             # The file containing the ground truth
     ground_truth_slices: list[str]                     # Slices in the ground truth image that shall be used
     image_names: list[str]                             # Names of images. This will be used to store evaluation metrics for the images
     image_type: Literal['color'] | Literal['affinity'] # Whether the image contains color values or affinity values
+    mask_datasets: list[str | None] | None             # The mask datasets for each slice. List value of None means no mask
+    mask_file: str | None                              # A file that contains masks for the slices. If none, masks won't be used
     offsets: list[tuple[int, int, int]]                # The offsets that are used in the mutex watershed algorithm
     save_directory: str                                # The directory where to save the results
     save_file_name: str                                # The name of the saved file
