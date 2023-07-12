@@ -144,6 +144,19 @@ def translate_image(config: TranslateImageConfig):
         for slice_string in s:
             images.append(np.asarray(eval(f'image[{slice_string}]')))
 
+    if config.skip_translation:
+        outputs = []
+        for image in images:
+            if image.dtype == np.uint8:
+                image = image / 255
+            elif image.dtype == np.uint16:
+                image = image / image.max()
+            else:
+                raise NotImplementedError(f"The datatype {image.dtype} is not implemented")
+            outputs.append(image)
+        return outputs
+        
+
     generator = define_G(**object_to_dict(config.generator_config))
     sucess = generator.load_state_dict(torch.load(get_path(config.generator_save)))
     logging.info(sucess)

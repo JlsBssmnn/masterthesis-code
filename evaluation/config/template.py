@@ -8,6 +8,7 @@ class TranslateImageConfig:
     input_file: str                  # The file that contains the input image
     patch_size: tuple[int, int, int] # The input size for the generator
     scale_with_patch_max: bool       # If true, the network input is computed like this: (patch / patch.max() - 0.5) * 2
+    skip_translation: bool           # If true, translation is skipped. Can be used to evaluate without applying the generator.
     slices: list[str] | None         # Python slice strings. If provided only these parts of the input are fed to the generator.
     use_gpu: bool                    # Whether to do the inference on the gpu
 
