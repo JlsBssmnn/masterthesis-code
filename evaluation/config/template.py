@@ -61,6 +61,7 @@ class BrainbowSegmentationConfig:
     show_progress: bool                                # If true, a progress bar will indicate the progress
     show_segmentation: bool                            # If true, the segmentation images will be shown
     slice_str: str                                     # A python slice specifying which part of the generator output is used for segmentation
+    verbose: bool                                      # If true, logs will be emitted informing about the sate of the program
 
     # these properties are only used in the one_step function
     input_file: str | None            # The file for loading the images

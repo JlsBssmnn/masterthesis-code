@@ -14,6 +14,7 @@ from utils.neuroglancer_viewer.neuroglancer_viewer import show_image
 import webbrowser
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from partition_comparison import WeightedSingletonVariationOfInformation as WeightedSingletonVI, VariationOfInformation
+from image_synthesis.logging_config import logging
 
 # Function was copied from here: https://github.com/markschoene/MeLeCoLe/blob/main/melecole/infer.py#L181
 def run_mws(affinities,
@@ -158,6 +159,7 @@ class SEBrainbow:
         self.config = config
         self.config.offsets = np.array(self.config.offsets)
         self.color_image = config.image_type == 'color'
+        self.log = lambda message: logging.info(message) if config.verbose else None
 
         self.affinity_params = create_param_list(self.config.bg_measure, self.config.dist_measure, self.config.bg_threshold)
         self.bias_cut_values = np.arange(*self.config.bias_cut_range).round(10)
@@ -243,10 +245,12 @@ class SEBrainbow:
         return path / file_name
 
     def find_segmentation_and_eval(self, images, compute_VI=True):
+        self.log('Start search for segmentation')
         prog = tqdm(total=self.bias_cut_values.shape[0] * len(images) * len(self.affinity_params), disable=not self.config.show_progress)
         segmentations = {}
 
         for bg_measure, dist_measure, bg_threshold in self.affinity_params:
+            self.log(f'Trying out parameter combination: bg_measure={bg_measure}, dist_measure={dist_measure}, bg_threshold={bg_threshold}')
             images = list(map(lambda x: eval(f'x[{self.config.slice_str}]'), images))
             if self.color_image:
                 images = [create_brainbow_affinities(image, self.config.offsets, bg_measure, None, dist_measure)
@@ -341,6 +345,7 @@ class SEBrainbow:
                 self.results["evaluation"].append(result) 
 
         prog.close()
+        self.log('Search for segmentation finished')
         return segmentations
 
     def eval_image(self, affinities, foreground_mask, bias_cut, i):
