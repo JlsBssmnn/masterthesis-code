@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 sys.path.append(str(Path(__file__).parent.parent / 'cycleGAN'))
 
 from evaluation.evaluate_brainbows import SEBrainbow, create_param_list
-from evaluation.translate_image import translate_image
+from evaluation.translate_image_old import translate_image
 
 def get_parameter_values(param):
     l = create_param_list(param)

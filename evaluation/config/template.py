@@ -1,16 +1,17 @@
 from typing import Any, Literal
 
 class TranslateImageConfig:
-    batch_size: int                  # How many input patches are fed into the generator at once
-    generator_config: Any            # The parameters that the generator was created with (as another object)
-    generator_save: str              # Path to the saved generator
-    input_dataset: str               # The dataset which contains the input image
-    input_file: str                  # The file that contains the input image
-    patch_size: tuple[int, int, int] # The input size for the generator
-    scale_with_patch_max: bool       # If true, the network input is computed like this: (patch / patch.max() - 0.5) * 2
-    skip_translation: bool           # If true, translation is skipped. Can be used to evaluate without applying the generator.
-    slices: list[str] | None         # Python slice strings. If provided only these parts of the input are fed to the generator.
-    use_gpu: bool                    # Whether to do the inference on the gpu
+    batch_size: int                     # How many input patches are fed into the generator at once
+    generator_config: Any               # The parameters that the generator was created with (as another object)
+    generator_save: str                 # Path to the saved generator
+    input_dataset: str                  # The dataset which contains the input image
+    input_file: str                     # The file that contains the input image
+    patch_size: tuple[int, int, int]    # The input size for the generator
+    scale_with_patch_max: bool          # If true, the network input is computed like this: (patch / patch.max() - 0.5) * 2
+    skip_translation: bool              # If true, translation is skipped. Can be used to evaluate without applying the generator.
+    slices: list[str] | None            # Python slice strings. If provided only these parts of the input are fed to the generator.
+    stride: tuple[int, int, int] | None # The stride for iterating over the images. Only required when using the old translation script.
+    use_gpu: bool                       # Whether to do the inference on the gpu
 
     # these properties are only used in the one_step function
     output_datasets: list[str] | None # The dataset names of the output images
