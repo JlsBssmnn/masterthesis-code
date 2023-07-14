@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import importlib
 from collections import defaultdict
+import h5py
 import numpy as np
 import xarray as xr
 
@@ -11,14 +12,33 @@ sys.path.append(str(Path(__file__).parent.parent / 'cycleGAN'))
 
 from evaluation.evaluate_brainbows import SEBrainbow, create_param_list
 from evaluation.translate_image_old import translate_image
+from evaluation.config.template import BrainbowSegmentationConfig, Config
+from evaluation.evaluation_utils import get_path
 
 def get_parameter_values(param):
     l = create_param_list(param)
     return [x[0] for x in l] # flatten list of 1-element tuples
 
-def generate_evaluation(config, output_file):
-    config = importlib.import_module(f'config.{config}').config
-    images = translate_image(config.translate_image_config)
+def generate_evaluation(config_path, output_file):
+    config: Config = importlib.import_module(f'config.{config_path}').config
+    assert isinstance(config.segmentation_config, BrainbowSegmentationConfig)
+    sconfig = config.segmentation_config
+    tconfig = config.translate_image_config
+
+    if sconfig.input_file is not None and Path(get_path(sconfig.input_file)).exists() and not tconfig.skip_translation:
+        in_file, datasets = get_path(sconfig.input_file), sconfig.input_datasets
+        assert datasets
+        assert len(datasets) == 1
+        with h5py.File(in_file) as f:
+            images = [np.asarray(f[datasets[0]])]
+    else:
+        images = translate_image(tconfig)
+        out_file, datasets = get_path(tconfig.output_file), tconfig.output_datasets
+        if out_file is not None and tconfig.save_images:
+            assert datasets
+            assert len(datasets) == 1
+            with h5py.File(out_file, 'w-') as f:
+                f.create_dataset(datasets[0], data=images[0])
 
     evaluater = SEBrainbow(config.segmentation_config)
     evaluater.find_segmentation_and_eval(images, True)
