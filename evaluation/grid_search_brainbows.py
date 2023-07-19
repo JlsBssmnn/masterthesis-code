@@ -33,8 +33,8 @@ def generate_evaluation(config_path, output_file):
             images = [np.asarray(f[datasets[0]])]
     else:
         images = translate_image(tconfig)
-        out_file, datasets = get_path(tconfig.output_file), tconfig.output_datasets
-        if out_file is not None and tconfig.save_images:
+        if tconfig.output_file is not None and tconfig.save_images:
+            out_file, datasets = get_path(tconfig.output_file), tconfig.output_datasets
             assert datasets
             assert len(datasets) == 1
             with h5py.File(out_file, 'w-') as f:
