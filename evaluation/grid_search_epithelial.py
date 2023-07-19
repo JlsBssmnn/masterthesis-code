@@ -79,6 +79,36 @@ def get_epoch_length(file_path):
     df.sort_index(inplace=True)
     return df
 
+def get_best_score_and_VI(results):
+    """Uses a result dict produced by a SEEpithelial instance. It extracts the variation of information, over- and
+    under segmentation and score for each slice when tweaking on that slice."""
+
+    evaluation = results['evaluation']
+    aggregate_metrics = [('variation_of_information', 'VI'), ('under_segmentation', 'under_seg'), ('over_segmentation', 'over_seg'), 'score']
+    best_scores = {}
+
+    for e in evaluation:
+        seg_config = e['segmentation_parameters']
+        tweak_image = seg_config['tweak_image']
+        del seg_config['tweak_image']
+        metrics = e['evaluation_scores'][tweak_image]
+
+        for seg_param, value in seg_config.items():
+            best_scores[tweak_image + '_' + seg_param] = value
+        for metric in aggregate_metrics:
+            if type(metric) == tuple:
+                if metric[0] not in metrics:
+                    print(f"Warning: Metric {metric[0]} isn't in the evaluation scores for {tweak_image}!")
+                    continue
+                best_scores[tweak_image + '_best_' + metric[1]] = metrics[metric[0]]
+            else:
+                if metric not in metrics:
+                    print(f"Warning: Metric {metric} isn't in the evaluation scores for {tweak_image}!")
+                    continue
+                best_scores[tweak_image + '_best_' + metric] = metrics[metric]
+
+    return pd.DataFrame(best_scores, index=[0])
+
 def get_score_and_VI(grid_search_dir, config):
     config = importlib.import_module(f'config.{config}').config
 
@@ -138,6 +168,30 @@ def get_score_and_VI(grid_search_dir, config):
             ['diff'])
         df = pd.concat((df, pd.DataFrame(results, index=[experiment])))
     return df
+
+def extract_best_score_and_VI(eval_dir, output_csv):
+    """Takes a directory that contains subdirectories with results from a SEEpithelial instance. It extracts the
+    variation of information, over- and under segmentation and score for each slice when tweaking on it and summarizes
+    this information for all experiments in the directory into a csv."""
+    df = pd.DataFrame()
+
+    for path in Path(eval_dir).iterdir():
+        if not path.name.startswith('experiment_'):
+            continue
+        try:
+            experiment = int(path.stem[11:])
+        except:
+            continue
+
+        with open(path) as f:
+            results = json.load(f)
+        best_scores = get_best_score_and_VI(results)
+        index = best_scores.index.tolist()
+        index[0] = experiment
+        best_scores.index = index
+        df = pd.concat((df, best_scores), axis=0)
+    df.sort_index(inplace=True)
+    df.to_csv(output_csv)
 
 def get_min_diff(grid_search_dir):
     directories = Path(grid_search_dir)
