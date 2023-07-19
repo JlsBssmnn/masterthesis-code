@@ -14,6 +14,7 @@ sys.path.append(str(Path(__file__).parent.parent / 'cycleGAN'))
 
 
 from evaluation.evaluate_epithelial import SEEpithelial
+from evaluation.config.template import Config, EpithelialSegmentationConfig
 from evaluation.translate_image import translate_image
 from cycleGAN.util.Evaluater import summarize_results
 from utils.training_analysis.training_parser import parse_losses
@@ -228,6 +229,29 @@ def generate_evaluation(log_file, config, output_csv):
     df = pd.concat((df, pd.DataFrame(overfitting_scores,
                     columns=['slice1_overfitting', 'slice2_overfitting', 'slice3_overfitting'])), axis=1)
 
+    df.to_csv(output_csv)
+
+def generate_evaluation_for_image(config_path, output_csv):
+    """Evaluate segmentation of epithelial sheets without using a generator."""
+
+    config: Config = importlib.import_module(f'config.{config_path}').config
+    tconfig = config.translate_image_config
+    sconfig = config.segmentation_config
+    assert isinstance(sconfig, EpithelialSegmentationConfig)
+    assert tconfig.skip_translation, "This function evaluates without a generator, so translation should be skipped"
+
+    images = translate_image(tconfig)
+
+    evaluater = SEEpithelial(sconfig)
+    evaluater.eval_and_store(images)
+
+    aggregate_metrics = [('variation_of_information', 'VI'), ('under_segmentation', 'under_seg'), ('over_segmentation', 'over_seg'), 'score']
+    results = summarize_results(evaluater.results, config.segmentation_config.image_names, aggregate_metrics, ['diff'])
+
+    score_df = pd.DataFrame(results, index=[0])
+    best_score_df = get_best_score_and_VI(evaluater.results)
+
+    df = pd.concat((score_df, best_score_df), axis=1)
     df.to_csv(output_csv)
 
 if __name__ == '__main__':
