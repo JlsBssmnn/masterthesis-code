@@ -183,7 +183,7 @@ class SEBrainbow:
                                        for image in self.ground_truths]
 
         affinity_masks = [get_foreground_mask(self.ground_truth_affinites[0][1:], mask, self.config.offsets, 0.5)
-                          if type(mask) != slice else slice(None)
+                          if type(mask) != slice else np.ones_like(self.ground_truth_affinites[0][1:], dtype=bool)
                           for mask in self.masks]
         self.ground_truth_foregrounds = [get_foreground_mask(gt[1:], gt[0], self.config.offsets, 0.5) & affinity_masks[i]
                                          for i, gt in enumerate(self.ground_truth_affinites)]
