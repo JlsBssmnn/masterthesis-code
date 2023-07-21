@@ -378,7 +378,8 @@ class SEBrainbow:
         y_pred = (image[0][self.masks[i]] > bg_threshold).ravel()
         y_true = (self.ground_truths[i][self.masks[i]] != 0).ravel()
 
-        prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, pos_label=1, average='binary')
+        prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, pos_label=1, average='binary',
+                                                           zero_division=np.nan)
         acc = accuracy_score(y_true, y_pred)
         diff = ((image[0] - self.ground_truth_affinites[i][0])[self.masks[i]] ** 2).mean()
 
@@ -402,7 +403,8 @@ class SEBrainbow:
 
         pred_attractive_aff = pred_affinities >= 0.5
         true_attractive_aff = true_affinities >= 0.5
-        prec, rec, f1, _ = precision_recall_fscore_support(true_attractive_aff, pred_attractive_aff, pos_label=1, average='binary')
+        prec, rec, f1, _ = precision_recall_fscore_support(true_attractive_aff, pred_attractive_aff, pos_label=1,
+                                                           average='binary', zero_division=np.nan)
         result_dict['affinity_prec'] = prec
         result_dict['affinity_rec'] = rec
         result_dict['affinity_f1'] = f1
