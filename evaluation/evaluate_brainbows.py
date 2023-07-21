@@ -170,7 +170,7 @@ class SEBrainbow:
             for s in config.ground_truth_slices:
                 self.ground_truths.append(np.asarray(eval(f"h5_dataset[{s}]")))
 
-        self.masks = [slice(None)]*len(self.ground_truths)
+        self.masks = [np.ones_like(ground_truth, dtype=bool) for ground_truth in self.ground_truths]
         if config.mask_file is not None:
             assert config.mask_datasets is not None
             with h5py.File(config.mask_file) as f:
@@ -331,7 +331,7 @@ class SEBrainbow:
                     if bias_cut in used_bias_cuts:
                         evaluation = self.results["evaluation"][used_bias_cuts[bias_cut]]['evaluation_scores'][image_name]
                         evaluation = Evaluation.create(evaluation['under_seg'], evaluation['over_seg'],
-                                                       evaluation['w_under_seg'], evaluation['w_over_seg'], cached_seg)
+                                                       evaluation['weighted_under_seg'], evaluation['weighted_over_seg'], cached_seg)
                     else:
                         evaluation = self.eval_image(images[j][1:], foreground_masks[j], bias_cut, j)
                     evaluation.write_to_dict(other_image_result)
