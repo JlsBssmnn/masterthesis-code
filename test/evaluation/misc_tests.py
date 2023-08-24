@@ -7,44 +7,35 @@ import sys
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent / 'cycleGAN'))
 
-from evaluation.translate_image import compute_patch_locations
-from evaluation.evaluate_segmentation import evaluate_segmentation_epithelial
+from evaluation.translate_image import GeneratorApplier
+# from evaluation.evaluate_segmentation import evaluate_segmentation_epithelial
+
+class Config:
+    use_gpu = False
+
+    def __init__(self, patch_size):
+        self.patch_size = patch_size
 
 class ApplyGeneratorTest(unittest.TestCase):
     def test_compute_patch_locations1(self):
         shape = (1, 32, 64, 64)
         patch_size = np.array([32, 64, 64])
-        stride = np.array([32, 64, 64])
+        applier = GeneratorApplier(shape, Config(patch_size))
 
-        patch_locations = compute_patch_locations(shape, patch_size, stride)
-        npt.assert_equal(patch_locations, np.array([[0, 0, 0]]))
-
-        stride = np.array([16, 32, 32])
-        patch_locations = compute_patch_locations(shape, patch_size, stride)
-        npt.assert_equal(patch_locations, np.array([[0, 0, 0]]))
-        
-        stride = np.array([8, 16, 16])
-        patch_locations = compute_patch_locations(shape, patch_size, stride)
-        npt.assert_equal(patch_locations, np.array([[0, 0, 0]]))
+        patch_locations = applier.compute_patch_locations(shape, patch_size)
+        npt.assert_equal(patch_locations[0], np.array([[0, 0, 0]]))
+        npt.assert_equal(patch_locations[1], np.empty((0, 3)))
+        npt.assert_equal(patch_locations[2], np.empty((0, 3)))
+        npt.assert_equal(patch_locations[3], np.empty((0, 3)))
 
         patch_size = np.array([16, 32, 32])
-        stride = np.array([16, 32, 32])
 
-        patch_locations = compute_patch_locations(shape, patch_size, stride)
-        npt.assert_equal(patch_locations, np.array([[0, 0, 0], [0, 0, 32], [0, 32, 0],
+        patch_locations = applier.compute_patch_locations(shape, patch_size)
+        npt.assert_equal(patch_locations[0], np.array([[0, 0, 0], [0, 0, 32], [0, 32, 0],
             [0, 32, 32], [16, 0, 0], [16, 0, 32], [16, 32, 0], [16, 32, 32]]))
-
-        stride = np.array([10, 12, 32])
-        patch_locations = compute_patch_locations(shape, patch_size, stride)
-        npt.assert_equal(patch_locations, np.array(list(product([0, 10, 16], [0, 12, 24, 32], [0, 32]))))
-
-    def test_compute_patch_locations2(self):
-        shape = (1, 1, 4, 10)
-        patch_size = np.array([1, 4, 4])
-        stride = np.array([1, 2, 2])
-
-        patch_locations = compute_patch_locations(shape, patch_size, stride)
-        npt.assert_equal(patch_locations, np.array([[0, 0, 0], [0, 0, 2], [0, 0, 4], [0, 0, 6]]))
+        npt.assert_equal(patch_locations[1], np.array([[8, 0, 0], [8, 0, 32], [8, 32, 0], [8, 32, 32]]))
+        npt.assert_equal(patch_locations[2], np.array([[0, 16, 0], [0, 16, 32], [16, 16, 0], [16, 16, 32]]))
+        npt.assert_equal(patch_locations[3], np.array([[0, 0, 16], [0, 32, 16], [16, 0, 16], [16, 32, 16]]))
 
 class EvaluationTest(unittest.TestCase):
     def test_evaluate_segmentation_epithelial(self):

@@ -4,3 +4,6 @@ __pycache__
 data/
 git_ignored/
 utils/gif_renderer/configs
+
+evaluation/config/*
+!evaluation/config/template.py

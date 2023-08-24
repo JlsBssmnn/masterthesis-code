@@ -30,7 +30,10 @@ def main(opt):
     algorithm = importlib.import_module('image_synthesis.epithelial_sheet.' + opt.algorithm).generate_image
     image = algorithm(config)
 
-    dataset = f.create_dataset(opt.name, data=image[None, :])
+    if image.ndim == 3:
+        image = image[None]
+
+    dataset = f.create_dataset(opt.name, data=image)
     attr = dataset.attrs
     attr['element_size_um'] = [0.5, 0.2, 0.2]
     attr['config'] = opt.config
