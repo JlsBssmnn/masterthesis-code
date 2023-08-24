@@ -2,12 +2,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from collections import deque
+from collections import defaultdict, deque
 import datetime
 import importlib
 import re
 import pandas as pd
 import numpy as np
+import xarray as xr
 
 sys.path.append(str(Path(__file__).parent.parent))
 sys.path.append(str(Path(__file__).parent.parent / 'cycleGAN'))
@@ -253,6 +254,47 @@ def generate_evaluation_for_image(config_path, output_csv):
 
     df = pd.concat((score_df, best_score_df), axis=1)
     df.to_csv(output_csv)
+
+def eval_grid_serach_to_xarray(config_path, output_file):
+    """Evaluates one generator and saves the result for every cell and membrane threshold in an xarray dataset"""
+    config: Config = importlib.import_module(f'config.{config_path}').config
+    tconfig = config.translate_image_config
+    sconfig = config.segmentation_config
+    assert isinstance(sconfig, EpithelialSegmentationConfig)
+
+    images = translate_image(tconfig)
+    images = list(map(lambda x: eval(f'x[{sconfig.slice_str}]'), images))
+    images = list(map(lambda x: (x * 255).astype(np.uint8), images))
+
+    data = defaultdict(lambda: [])
+    evaluater = SEEpithelial(sconfig)
+
+    m_thresholds = b_thresholds = []
+    for i in range(len(images)):
+        membrane_truth, cell_truth = evaluater.ground_truths[i]
+        m_thresholds = []
+        b_thresholds = []
+        for basin_threshold, membrane_threshold in evaluater.threshold_values:
+            if basin_threshold not in b_thresholds:
+                b_thresholds.append(basin_threshold)
+            if membrane_threshold not in m_thresholds:
+                m_thresholds.append(membrane_threshold)
+
+            evaluation = evaluater.eval_image(images[i], basin_threshold, membrane_threshold, membrane_truth, cell_truth, i)
+            score = evaluater.compute_score(evaluation)
+
+            data['under_seg_' + str(i + 1)].append(evaluation.under_segmentation)
+            data['over_seg_' + str(i + 1)].append(evaluation.over_segmentation)
+            data['VI_' + str(i + 1)].append(evaluation.variation_of_information)
+            data['acc_' + str(i + 1)].append(evaluation.acc)
+            data['score_' + str(i + 1)].append(score)
+
+            # print(membrane_threshold, basin_threshold)
+    data = {k: (['membrane_threshold', 'cell_threshold'], np.array(v).reshape(len(m_thresholds), len(b_thresholds))) for k, v in data.items()}
+    m_thresholds = -np.array(m_thresholds) + 255
+    b_thresholds = -np.array(b_thresholds) + 255
+    ds = xr.Dataset(data, coords={'membrane_threshold': m_thresholds, 'cell_threshold': b_thresholds})
+    ds.to_netcdf(output_file)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
