@@ -29,6 +29,7 @@ if __name__ == '__main__':
     loss_plot_parser.add_argument('--style', default="style_1", help='The style that shall be applied')
     loss_plot_parser.add_argument('--output_file', default=None, help='If specified save figure to that file')
     loss_plot_parser.add_argument('--print_last', default=None, type=str, nargs='+', help='The losses where the last value will be printed')
+    loss_plot_parser.add_argument('--print_min', default=None, type=str, nargs='+', help='The losses where the mininum value will be printed')
     loss_plot_parser.add_argument('-a', '--aggregate', action='store_true', help='If set, all values matching a regex will be aggregated via mean')
 
     image_viewer = subparsers.add_parser('images')

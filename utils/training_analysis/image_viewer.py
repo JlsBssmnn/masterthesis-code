@@ -37,7 +37,7 @@ def image_viewer(opt):
                 images.append(np.asarray(dataset))
                 names.append(epoch + '_' + image_type)
                 scales.append(tuple(dataset.attrs['element_size_um']))
-    
+
     viewer = neuroglancer_viewer(images, names, scales, opt)
     print(viewer)
     if not opt.no_open:

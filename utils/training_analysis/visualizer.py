@@ -11,6 +11,9 @@ def matches_any_regex(string, regex_list) -> bool:
 def which_match_regex(regex, string_list) -> list[str]:
     return [s for s in string_list if re.search(regex, s) is not None]
 
+def filter_list_by_regexes(string_list, regex_list) -> list[str]:
+    return [s for s in string_list if matches_any_regex(s, regex_list)]
+
 def aggregate_strings(strings):
     i = -1
     while i >= -min([len(x) for x in strings]):
@@ -38,12 +41,23 @@ def plot_losses(losses, options):
                                   if matches_any_regex(x, options.show_only) and x not in options.omit]]
     else:
         first_axis_data = losses[[x for x in losses.keys()
-                                  if matches_any_regex(x, options.show_2nd_axis) if x not in options.omit]]
+                                  if matches_any_regex(x, losses.columns) and x not in options.omit]]
 
     if options.show_2nd_axis is not None:
-        second_axis_data = losses[[x for x in options.show_2nd_axis if x not in options.omit]]
+        second_axis_data = losses[[x for x in losses.keys()
+                                  if matches_any_regex(x, options.show_2nd_axis) and x not in options.omit]]
     else:
         second_axis_data = None
+
+    fixed_order_cols = ['D_A', 'G_A', 'cycle_A', 'D_B', 'G_B', 'cycle_B']
+    reindex = []
+    for col in fixed_order_cols:
+        if col in first_axis_data.columns:
+            reindex.append(col)
+    reindex.extend([x for x in first_axis_data.columns if x not in fixed_order_cols])
+    first_axis_data = first_axis_data[reindex]
+
+    first_axis_data = first_axis_data.rename(columns={'D_A': 'D_Y', 'G_A': 'G', 'cycle_A': 'cycle X→Y→X'})
 
     if options.aggregate:
         assert options.show_only is not None, "Connot aggregate without a regex"
@@ -91,8 +105,12 @@ def plot_losses(losses, options):
         plt.savefig(options.output_file)
 
     if options.print_last is not None:
-        for loss in data.keys():
+        for loss in losses.keys():
             if matches_any_regex(loss, options.print_last):
-                print(f"{loss}: {data[loss][1][-1]}")
+                print(f"last {loss}: {losses[loss].dropna().iloc[-1]}")
+    if options.print_min is not None:
+        for loss in losses.keys():
+            if matches_any_regex(loss, options.print_min):
+                print(f"min {loss}: {losses[loss].dropna().min()}")
 
     plt.show()
