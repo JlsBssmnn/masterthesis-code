@@ -1,6 +1,11 @@
 import importlib
 import neuroglancer
 import numpy as np
+import pathlib
+import sys
+
+sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
+from utils.misc import scale_image
 
 def neuroglancer_viewer(images: list, names: list = None, scales: list = None, options = None):
     if names is None:
@@ -117,6 +122,20 @@ def neuroglancer_viewer(images: list, names: list = None, scales: list = None, o
 
     return viewer
 
+def get_shader(n_channels):
+    rgb_values = [f"toNormalized(getDataValue({i}))" for i in range(n_channels)]
+    if n_channels > 3:
+        rgb_values[2] = '+'.join(rgb_values[2:])
+        rgb_values = rgb_values[:3]
+    elif n_channels < 3:
+        rgb_values.extend(['0'] * (3-n_channels))
+    s = ', '.join(rgb_values)
+
+    return """
+    void main() {
+    emitRGB(vec3(%s));
+    }
+    """ % s
 
 def show_image(viewer, image, name='image', segmentation=False, scales=[0.5, 0.2, 0.2]):
     with viewer.txn() as state:
@@ -124,6 +143,15 @@ def show_image(viewer, image, name='image', segmentation=False, scales=[0.5, 0.2
                                                 units='nm',
                                                 scales=scales)
         state.dimensions = dimensions
+
+        if image.dtype == np.uint16 and not segmentation:
+            image = scale_image(image, 0, image.max(), 0, 255).astype(np.uint8)
+
+        argmin = np.argmin(image.shape) != 0
+        if image.ndim == 4 and image.shape[0] == 1:
+            image = image[0]
+        elif image.ndim == 4 and argmin:
+            image = np.rollaxis(image, -1)
 
         if name in state.layers:
             del state.layers[name]
@@ -160,6 +188,7 @@ def show_image(viewer, image, name='image', segmentation=False, scales=[0.5, 0.2
                     )
                 )
         elif image.ndim == 4:
+            c = image.shape[0]
             state.layers.append(
                 name=name,
                 layer=neuroglancer.LocalVolume(
@@ -169,14 +198,10 @@ def show_image(viewer, image, name='image', segmentation=False, scales=[0.5, 0.2
                         units=['', 'nm', 'nm', 'nm'],
                         scales=[1] + scales,
                         coordinate_arrays=[
-                            neuroglancer.CoordinateArray(labels=['red', 'blue']), None, None, None,
-                        ])),
-                        shader="""
-    void main() {
-    emitRGB(vec3(toNormalized(getDataValue(0)),
-                toNormalized(getDataValue(1)), 0));
-    }
-    """,
+                            neuroglancer.CoordinateArray(labels=['red', 'green', 'blue', 'yellow'][:c]), None, None, None,
+                        ])
+                ),
+                shader=get_shader(c)
             )
         elif image.ndim == 2:
             state.layers.append(
@@ -191,6 +216,6 @@ def show_image(viewer, image, name='image', segmentation=False, scales=[0.5, 0.2
             )
         state.show_slices = False
         state.cross_section_background_color = "#2e2e2e"
-        state.layout = "xy"
+        state.layout = "yz"
         if segmentation:
             state.layers[name].type = 'segmentation'
