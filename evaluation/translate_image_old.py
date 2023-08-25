@@ -45,6 +45,11 @@ def apply_generator(input, generator, config: TranslateImageConfig):
     batch_size = config.batch_size
     assert (input.shape[-3:] >= patch_size).all(), 'Input must be at least as big as one patch'
 
+    if config.mask is None:
+        mask = torch.ones(patch_size)
+    else:
+        mask = torch.from_numpy(config.mask)
+
     input_batch = torch.empty((batch_size, input.shape[0]) + tuple(patch_size), device=device)
 
     n_output_layers = int((np.ceil(patch_size / stride) + 1).prod()) # This only works for stride = patch_size / 2
@@ -82,14 +87,16 @@ def apply_generator(input, generator, config: TranslateImageConfig):
         i = 0
 
         gen_output = generator(input_batch)
+        gen_output[:, ~mask] = float('nan')
         insert_gen_output(gen_output)
     else:
         if i > 0:
             gen_output = generator(input_batch[:i])
+            gen_output[:, ~mask] = float('nan')
             insert_gen_output(gen_output)
 
     outputs = torch.nanmean(outputs, axis=0)
-    assert not torch.any(torch.isnan(outputs)), 'There should be no NaN value left in outputs'
+    outputs[torch.isnan(outputs)] = config.masked_value
     return outputs.detach().cpu().numpy()
 
 

@@ -1,3 +1,4 @@
+from evaluation.translate_image_old import apply_generator as apply_generator_slow
 import numpy as np
 import torch
 from evaluation.config.template import TranslateImageConfig
@@ -163,6 +164,7 @@ def translate_image(config: TranslateImageConfig):
     if config.use_gpu:
         generator.to(0)
 
+    patch_size_aligns = all([(np.array(image.shape[-3:]) % config.patch_size == 0).all() for image in images])
     outputs = []
 
     for image in images:
@@ -177,8 +179,11 @@ def translate_image(config: TranslateImageConfig):
         if config.use_gpu:
             image = image.to(0)
 
-        applier = GeneratorApplier(image.shape, config)
-        output = applier.apply_generator(image, generator)
+        if patch_size_aligns:
+            applier = GeneratorApplier(image.shape, config)
+            output = applier.apply_generator(image, generator)
+        else:
+            output = apply_generator_slow(image, generator, config)
         output = ((output + 1) / 2) # normalize to range(0, 1)
         outputs.append(output)
     return outputs

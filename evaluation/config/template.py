@@ -1,4 +1,5 @@
 from typing import Any, Literal
+import numpy.typing as npt
 
 class TranslateImageConfig:
     batch_size: int                     # How many input patches are fed into the generator at once
@@ -6,6 +7,8 @@ class TranslateImageConfig:
     generator_save: str                 # Path to the saved generator
     input_dataset: str                  # The dataset which contains the input image
     input_file: str                     # The file that contains the input image
+    mask: None | npt.NDArray[bool]      # If provided, the mask is applied to generator output and only the masked output is used
+    masked_value: float                 # The value assigned to voxels outside of the mask for the generator output
     patch_size: tuple[int, int, int]    # The input size for the generator
     scale_with_patch_max: bool          # If true, the network input is computed like this: (patch / patch.max() - 0.5) * 2
     skip_translation: bool              # If true, translation is skipped. Can be used to evaluate without applying the generator.
