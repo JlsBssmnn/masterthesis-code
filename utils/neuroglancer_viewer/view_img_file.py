@@ -8,9 +8,9 @@ import neuroglancer
 from skimage import io
 import importlib
 
-sys.path.append(str(pathlib.Path(__file__).parent.parent.resolve()))
-from misc import StoreDictKeyPair
-from neuroglancer_viewer import show_image
+sys.path.append(str(pathlib.Path(__file__).parent.parent.parent.resolve()))
+from utils.misc import StoreDictKeyPair
+from utils.neuroglancer_viewer.neuroglancer_viewer import show_image
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
