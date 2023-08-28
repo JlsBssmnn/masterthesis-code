@@ -1,5 +1,5 @@
 import numpy as np
-from skimage.color import label2rgb
+from utils.misc import label2rgb
 
 def threshold(image, threshold=127.5):
   '''Threshold the image.'''
@@ -11,7 +11,7 @@ def invert(image):
     '''Inverts a uint8 image, so white -> black and black -> white. Similarly for gray values.'''
     return -image + 255
 
-def color2label(image):
+def color2label(image, seed=0):
     '''Label a color image by assinging all voxels of the same color the same label. After creating
     the segmentation, the segmentation is visualized as a color image.'''
     c = image.shape[0]
@@ -33,14 +33,14 @@ def color2label(image):
             new[mask] = label
             label += 1
 
-    image = label2rgb(new)
+    image = label2rgb(new, seed)
     image = (image * 255).astype(np.uint8)
     image = np.rollaxis(image, -1, 0)
     return image
 
-def label(image):
+def label(image, seed=0):
     '''Visualizes a segmentation as a color image.'''
-    image = label2rgb(image)
+    image = label2rgb(image, seed)
     image = (image * 255).astype(np.uint8)
     image = np.rollaxis(image, -1, 0)
     return image
