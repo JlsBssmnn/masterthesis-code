@@ -104,7 +104,10 @@ class CliRunner:
                 for item in l:
                     key, value = item.split('=')
                     keys.append(key)
-                    values.append(value)
+                    if value.isdecimal():
+                        values.append(int(value))
+                    else:
+                        values.append(value)
                 params[f'{metrics}_aggregate'] = dict(zip(keys, values))
             else:
                 params[f'{metrics}_aggregate'] = aggregate_string
