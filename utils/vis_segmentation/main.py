@@ -8,7 +8,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from utils.misc import label2rgb
 
-def main(input_file, output_file, dataset):
+def main(input_file, output_file, dataset, background):
     with h5py.File(input_file) as f:
         if len(f.keys()) == 1:
             assert dataset is None or f.keys()[0] == dataset, 'The specified dataset does not exist'
@@ -24,6 +24,7 @@ def main(input_file, output_file, dataset):
         i += 1
 
     rgb = label2rgb(seg)
+    rgb[np.all(rgb == [0, 0, 0], axis=-1)] = background
     fig, ax = plt.subplots()
     ax.imshow(rgb)
     plt.ion()
@@ -34,6 +35,7 @@ def main(input_file, output_file, dataset):
         if seed == 'exit':
             break
         rgb = label2rgb(seg, int(seed))
+        rgb[np.all(rgb == [0, 0, 0], axis=-1)] = background
         ax.imshow(rgb)
         # plt.show(block=False)
 
@@ -44,6 +46,8 @@ if __name__ == '__main__':
     parser.add_argument('input_file', type=str, help='The h5 file that stores the segmentation')
     parser.add_argument('output_file', type=str, help='The path to the image file where the segmentation will be stored')
     parser.add_argument('--dataset', default=None, type=str, help='Which dataset in the h5 file to use')
+    parser.add_argument('--background', default=(0, 0, 0), type=float, nargs=3, help='The RGB values for the background')
+
     args = parser.parse_args()
 
-    main(args.input_file, args.output_file, args.dataset)
+    main(args.input_file, args.output_file, args.dataset, args.background)
